@@ -4,7 +4,7 @@
 
   // ====== CONFIG ======
   // Set this to your RAW Gist URL (best CORS behavior) or keep local 'schedules.json' while testing.
-  const SCHEDULES_URL = 'schedules.json'; // <-- replace with your Gist raw URL when ready
+  const SCHEDULES_URL = 'https://gist.githubusercontent.com/andrewharris-netizen/f731d56672883762b9ba4c3b9b588b38/raw/43130bfa0fb630016e50ee23d7b8a3106124d83f/gistfile1.txt'; // <-- replace with your Gist raw URL when ready
   const SCHOOL_TZ = 'America/Chicago';
   const SCHOOL_HOURS = { start: '07:00', end: '17:00' }; // dim outside these
   const FLASH_MS = 5000; // flash time on timer end
