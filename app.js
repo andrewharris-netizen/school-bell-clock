@@ -8,9 +8,10 @@
   }
 
   // ===== CONFIG =====
-  // While testing locally, this can be 'schedules.json'.
-  // In production, set this to your RAW Gist URL for schedules.json.
-  const SCHEDULES_URL = 'schedules.json';
+  // Schedules live in your Gist (RAW URL)
+  const SCHEDULES_URL =
+    'https://gist.githubusercontent.com/andrewharris-netizen/f731d56672883762b9ba4c3b9b588b38/raw/43130bfa0fb630016e50ee23d7b8a3106124d83f/gistfile1.txt';
+
   const SCHOOL_TZ = 'America/Chicago';
   const SCHOOL_HOURS = { start: '07:00', end: '17:00' }; // for dim overlay
   const FLASH_MS = 5000;        // flash duration on timer end
@@ -400,7 +401,7 @@
     flashUntil = null;
     showToast(`Timer: ${mmss(seconds)}`);
     ensureAudio();
-    beep(660, 120); // little confirm chirp
+    beep(660, 120); // confirm chirp
   }
 
   function cancelTimer() {
@@ -432,7 +433,6 @@
   }
 
   function keyHandler(e) {
-    // Avoid hijacking keys if user is in an input (we don't have any, but just in case)
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
 
     switch (e.key) {
@@ -546,13 +546,35 @@
   // ===== Fetch schedules =====
   async function fetchSchedules() {
     const url = SCHEDULES_URL + (SCHEDULES_URL.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Fetch schedules failed: ${res.status}`);
-    const data = await res.json();
+    let res;
+    try {
+      res = await fetch(url, { cache: 'no-store' });
+    } catch (e) {
+      showToast(`Fetch failed: ${e.message}`, 5000);
+      throw e;
+    }
+    if (!res.ok) {
+      const msg = `Fetch schedules failed: ${res.status} ${res.statusText}`;
+      showToast(msg, 5000);
+      throw new Error(msg);
+    }
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      showToast(`Bad JSON: ${e.message}`, 5000);
+      throw e;
+    }
+
     schedules = data.modes ? data.modes : data;
     modesOrder = Object.keys(schedules);
 
-    if (!modesOrder.length) throw new Error('No modes found in schedules.json');
+    if (!modesOrder.length) {
+      const msg = 'No modes found in schedules.json';
+      showToast(msg, 5000);
+      throw new Error(msg);
+    }
     if (!schedules[activeMode]) activeMode = modesOrder[0];
 
     renderModeTag();
@@ -564,7 +586,7 @@
     try {
       await fetchSchedules();
     } catch (err) {
-      showToast(err.message, 3500);
+      console.error(err);
     }
   });
 
@@ -602,7 +624,7 @@
     try {
       await fetchSchedules();
     } catch (err) {
-      showToast(err.message, 4000);
+      console.error(err);
     }
     renderModeTag();
     requestAnimationFrame(loop);
