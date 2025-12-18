@@ -264,6 +264,25 @@
     return { state: 'noschedule' };
   }
 
+function updateTabTitle(stat, n) {
+  if (!stat || !stat.nextBell) {
+    document.title = 'School Bell Clock';
+    return;
+  }
+
+  const seconds = secondsBetween(n, stat.nextBell);
+  const remaining = mmss(seconds);
+
+  if (stat.state === 'in_period') {
+    document.title = `⏰ ${remaining} left — ${stat.current}`;
+  } else if (stat.state === 'passing') {
+    document.title = `⏳ ${remaining} to ${stat.nextPeriodLabel}`;
+  } else {
+    document.title = 'School Bell Clock';
+  }
+}
+
+
   // ===== Render helpers =====
   function renderClock(n) {
     timeEl.textContent = fmtClock(n);
@@ -355,6 +374,7 @@
 
     const blocks = buildBlocksFor(activeMode);
     const stat = scheduleStatus(n, blocks);
+    updateTabTitle(stat, n);
 
     // If a bell occurs during a timer → cancel timer and return bell view
     if (timerEnd && stat.nextBell && n >= stat.nextBell) {
