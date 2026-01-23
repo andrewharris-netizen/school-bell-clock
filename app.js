@@ -300,29 +300,35 @@
     modeTagEl.textContent = `Mode: ${activeMode}`;
   }
 
-  function renderScheduleTable(blocks, n) {
-    tableEl.innerHTML = '';
-    let activeIndex = -1;
-    blocks.forEach((b, i) => { if (n >= b.sdt && n < b.edt) activeIndex = i; });
+function renderScheduleTable(blocks, n) {
+  tableEl.innerHTML = '';
 
-    blocks.forEach((b, i) => {
-      const row = document.createElement('div');
-      row.className = 'row' + (i === activeIndex ? ' active' : '');
+  // Keep only 1st–7th Period for the 7-column bottom grid
+  const periodBlocks = blocks.filter(b => /^(1st|2nd|3rd|4th|5th|6th|7th)\s+Period$/i.test(b.label));
 
-      // stacked rows (one column)
-      const label = document.createElement('div');
-      label.className = 'label';
-      label.textContent = b.label;
+  let activeIndex = -1;
+  periodBlocks.forEach((b, i) => {
+    if (n >= b.sdt && n < b.edt) activeIndex = i;
+  });
 
-      const time = document.createElement('div');
-      time.className = 'time';
-      time.textContent = `${fmtHM(b.sdt)}–${fmtHM(b.edt)}`;
+  periodBlocks.forEach((b, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'row' + (i === activeIndex ? ' active' : '');
 
-      row.appendChild(label);
-      row.appendChild(time);
-      tableEl.appendChild(row);
-    });
-  }
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = b.label.replace(' Period', ''); // makes it cleaner: "1st"
+
+    const time = document.createElement('div');
+    time.className = 'time';
+    time.textContent = `${fmtHM(b.sdt)}–${fmtHM(b.edt)}`;
+
+    cell.appendChild(label);
+    cell.appendChild(time);
+    tableEl.appendChild(cell);
+  });
+}
+
 
   function renderCenter(stat, n) {
     if (!stat || stat.state === 'noschedule') {
