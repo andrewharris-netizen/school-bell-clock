@@ -47,3 +47,9 @@ footer { color: var(--muted); font-size: 1.9vmin; text-align: center; }
 
 .audioGate { position: fixed; inset: auto 2vw 2vh auto; z-index: 1000; border: 1px dashed var(--border); background: #111; color: #fff; }
 .audioGate.hidden { display: none; }
+
+/* Hide weather when viewport is tight */
+@media (max-height: 520px), (max-width: 820px) {
+  #weather { display: none; }
+}
+
