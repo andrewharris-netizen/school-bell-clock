@@ -5,13 +5,16 @@
   <title>School Bell Clock</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
-<!-- Prefer local copy; fall back to CDN if available -->
-<script src="luxon.min.js"></script>
-<script>
-  if (typeof window.luxon === 'undefined') {
-    document.write('<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"><\/script>');
-  }
-</script>
+
+  <!-- Prefer local copy; fall back to CDN if available -->
+  <script src="luxon.min.js"></script>
+  <script>
+    if (typeof window.luxon === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"><\/script>');
+    }
+  </script>
+</head>
+
 <body>
   <div id="app">
     <header>
@@ -19,10 +22,11 @@
         <div id="time">--:--:--</div>
         <div id="date">---</div>
       </div>
+
       <div class="right">
         <div id="modeTag">Mode: --</div>
         <div id="simTag" class="muted"></div>
-        <button id="reloadBtn" title="Fetch schedules.json again">Reload schedules</button>
+        <button id="reloadBtn" title="Fetch schedules again">Reload schedules</button>
         <button id="fullscreenBtn" title="Fullscreen (Esc to exit)">Fullscreen</button>
       </div>
     </header>
@@ -50,9 +54,11 @@
       <div class="muted">
         Keys: R/P/E/T/S modes · 1/5/0 timers · Backspace cancel · M mute · +/- volume · [ / ] / \ / N simulate · F fullscreen
       </div>
+
       <div id="weather" class="weather muted">
-  <span id="weatherIcon" class="weather__icon" aria-hidden="true"></span>
-  <span id="weatherText"></span></div>
+        <span id="weatherIcon" class="weather__icon" aria-hidden="true"></span>
+        <span id="weatherText"></span>
+      </div>
     </footer>
   </div>
 
