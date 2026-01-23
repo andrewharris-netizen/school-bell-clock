@@ -364,6 +364,69 @@ button:focus-visible, .btn:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* ===== Bottom schedule dock (7 columns) ===== */
+#scheduleBottom {
+  padding: 10px 26px 14px 26px;
+  border-top: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.35);
+}
+
+.scheduleGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* Each period cell */
+.scheduleGrid .row {
+  position: relative;
+  padding: 10px 10px 9px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  opacity: 0.45; /* faded by default */
+}
+
+/* Top line: Period name */
+.scheduleGrid .row .label {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+/* Bottom line: time */
+.scheduleGrid .row .time {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* Active highlight */
+.scheduleGrid .row.active {
+  opacity: 1;
+  background: rgba(255,255,255,0.10);
+}
+
+/* Accent bar */
+.scheduleGrid .row.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* If screen gets narrow, wrap to fewer columns */
+@media (max-width: 1100px) {
+  .scheduleGrid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 820px) {
+  .scheduleGrid { grid-template-columns: repeat(2, 1fr); }
+}
 
 /* Hide weather when viewport is tight */
 @media (max-height: 520px), (max-width: 820px) {
