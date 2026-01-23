@@ -1,10 +1,3 @@
-/* =========================
-   Fonts (self-hosted Inter)
-   Put these files in /fonts:
-   - fonts/Inter-Regular.woff2
-   - fonts/Inter-SemiBold.woff2
-   ========================= */
-
 @font-face {
   font-family: "Inter";
   src: url("fonts/Inter-Regular.woff2") format("woff2");
@@ -20,109 +13,73 @@
   font-display: swap;
 }
 
-/* =========================
-   Base
-   ========================= */
-
-:root {
-  --bg: #000;
-  --fg: #fff;
-  --muted: rgba(255, 255, 255, 0.70);
-  --muted2: rgba(255, 255, 255, 0.45);
-  --panel: rgba(255, 255, 255, 0.06);
-  --panel2: rgba(255, 255, 255, 0.10);
-  --border: rgba(255, 255, 255, 0.14);
-  --accent: #fff;
+:root{
+  --bg:#000;
+  --fg:#fff;
+  --muted: rgba(255,255,255,.72);
+  --muted2: rgba(255,255,255,.45);
+  --border: rgba(255,255,255,.14);
+  --panel: rgba(255,255,255,.06);
+  --panel2: rgba(255,255,255,.10);
 }
 
-* { box-sizing: border-box; }
+*{ box-sizing:border-box; }
 
-html, body {
-  width: 100%;
-  height: 100%;
-  background: var(--bg);
-  color: var(--fg);
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+html, body{
+  height:100%;
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:"Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  overflow:hidden;
 }
 
-a { color: inherit; }
+.muted{ color: var(--muted); }
+.hidden{ display:none !important; }
 
-.muted { color: var(--muted); }
-
-/* =========================
-   Layout containers
-   (These are flexible to fit your HTML even if it’s slightly different)
-   ========================= */
-
-#app, .app {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+#app{
+  height:100vh;
+  display:flex;
+  flex-direction:column;
 }
 
-/* Top bar area (time/date/mode) */
-.header, #header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 22px 26px 10px 26px;
-  gap: 16px;
+/* ===== Header ===== */
+header{
+  flex: 0 0 auto;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+  padding: 22px 26px 8px 26px;
 }
 
-/* Main content area */
-.main, #main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 18px;
-  padding: 0 26px 18px 26px;
-  align-items: start;
+header .left{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
 }
 
-/* Responsive: collapse right column if too narrow */
-@media (max-width: 980px) {
-  .main, #main {
-    grid-template-columns: 1fr;
-  }
+#time{
+  font-size: clamp(46px, 6vw, 84px);
+  font-weight:600;
+  letter-spacing:-0.02em;
+  line-height:1;
 }
 
-/* Footer area (key hints + weather) */
-footer, .footer, #footer {
-  padding: 12px 26px 18px 26px;
-  border-top: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.35);
-}
-
-/* =========================
-   Time / Date / Tags
-   ========================= */
-
-#time {
-  font-size: 52px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.0;
-}
-
-#date {
-  margin-top: 6px;
+#date{
   font-size: 16px;
   color: var(--muted);
-  letter-spacing: 0.01em;
 }
 
-.tagRow, #tagRow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
+header .right{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
 }
 
-#modeTag, #simTag {
+#modeTag, #simTag{
   font-size: 13px;
   color: var(--muted);
   background: var(--panel);
@@ -132,162 +89,192 @@ footer, .footer, #footer {
   white-space: nowrap;
 }
 
-/* =========================
-   Center text (Current period / Next bell)
-   ========================= */
+/* Buttons */
+button{
+  appearance:none;
+  border:1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor:pointer;
+}
+button:hover{ background: var(--panel2); }
 
-#currentPeriod {
-  font-size: 44px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-  margin-top: 22px;
+/* ===== Main hero area ===== */
+main{
+  flex: 1 1 auto;
+  min-height: 0; /* important for overflow control */
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 0 26px;
 }
 
-#nextBell {
+#centerInfo{
+  width:100%;
+  max-width: 1100px;
+  text-align:left;
+}
+
+#currentPeriod{
+  font-size: clamp(38px, 4.4vw, 70px);
+  font-weight:600;
+  letter-spacing:-0.02em;
+  line-height:1.05;
+}
+
+#nextBell{
   margin-top: 14px;
-  font-size: 22px;
+  font-size: clamp(18px, 2.2vw, 30px);
   color: var(--muted);
-  letter-spacing: -0.01em;
 }
 
-/* Give the left content some breathing room if it's in a panel */
-.leftPanel, #leftPanel {
-  padding: 18px 18px 18px 18px;
-  border-radius: 16px;
-  background: transparent;
+/* ===== Schedule dock (above footer) ===== */
+#scheduleDock{
+  flex: 0 0 auto;
+  padding: 10px 26px 12px 26px;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,.35);
 }
 
-/* =========================
-   Schedule Table (stacked rows, one column)
-   ========================= */
+/* 7 columns, compact. If it can't fit, it scrolls horizontally instead of squishing. */
+#scheduleTable{
+  display:grid;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
 
-.rightPanel, #rightPanel {
-  padding: 16px;
-  border-radius: 16px;
+/* Each schedule block */
+#scheduleTable .row{
+  position:relative;
+  padding: 10px 10px 9px 12px;
+  border-radius: 12px;
   background: var(--panel);
   border: 1px solid var(--border);
+  opacity: .45;   /* faded by default */
+  white-space: nowrap;
 }
 
-#scheduleTable {
-  margin-top: 6px;
-}
-
-/* Row base */
-#scheduleTable .row {
-  position: relative;
-  padding: 10px 10px 10px 14px;
-  margin: 6px 0;
-  border-radius: 12px;
-  opacity: 0.45;              /* fade other periods */
-  transition: opacity 150ms ease, background 150ms ease;
-}
-
-/* Two stacked lines */
-#scheduleTable .row .label {
-  font-size: 18px;            /* base size */
+#scheduleTable .row .label{
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.1;
 }
 
-#scheduleTable .row .time {
-  margin-top: 3px;
-  font-size: 14px;
-  opacity: 0.75;
+#scheduleTable .row .time{
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: .8;
 }
 
-/* Active row */
-#scheduleTable .row.active {
+#scheduleTable .row.active{
   opacity: 1;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--panel2);
 }
 
-/* Accent bar */
-#scheduleTable .row.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 4px;
-  background: var(--accent);
+#scheduleTable .row.active::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:10px;
+  bottom:10px;
+  width:4px;
+  border-radius:4px;
+  background:#fff;
 }
 
-/* Current period bigger (~+5pt) */
-#scheduleTable .row.active .label {
-  font-size: 23px;
+/* ===== Footer: always bottom, contains keys + weather ===== */
+footer{
+  flex: 0 0 auto;
+  padding: 10px 26px 18px 26px;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,.45);
 }
 
-#scheduleTable .row.active .time {
-  font-size: 19px;
-  opacity: 0.9;
+footer .muted{
+  font-size: 13px;
+  line-height: 1.35;
 }
 
-/* Optional: subtle hover for desktop (won’t matter on TVs) */
-#scheduleTable .row:hover {
-  background: rgba(255, 255, 255, 0.04);
+/* Weather */
+.weather{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top: 8px;
+  color: var(--muted);
 }
 
-/* =========================
-   Buttons (reload/fullscreen)
-   ========================= */
-
-.controls, #controls {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 10px;
+.weather__icon svg{
+  width: 22px;
+  height: 22px;
+  display:block;
+  fill:none;
+  stroke:#fff;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
 
-button, .btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--fg);
-  font-family: inherit;
-  font-size: 14px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 150ms ease, transform 80ms ease;
+/* Hide weather when too small */
+@media (max-height: 520px), (max-width: 820px) {
+  #weather { display: none; }
 }
 
-button:hover, .btn:hover {
-  background: rgba(255, 255, 255, 0.10);
+/* ===== Overlays ===== */
+.overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
 }
 
-button:active, .btn:active {
-  transform: translateY(1px);
+#countdownOverlay{
+  background: rgba(0,0,0,.92);
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
-button:focus-visible, .btn:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.55);
-  outline-offset: 2px;
+#countdownText{
+  font-size: clamp(96px, 12vw, 180px);
+  font-weight:600;
+  letter-spacing:-0.03em;
 }
 
-.hidden { display: none !important; }
+#flashOverlay{
+  pointer-events:none;
+  background: transparent;
+  z-index: 8500;
+}
 
-/* =========================
-   Toasts
-   ========================= */
+#dimOverlay{
+  pointer-events:none;
+  background: rgba(0,0,0,.50);
+  z-index: 2000;
+}
 
-#toastContainer {
+/* Toasts */
+#toastContainer{
   position: fixed;
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
   z-index: 9999;
-  pointer-events: none;
+  pointer-events:none;
 }
 
-.toast {
-  pointer-events: none;
-  background: rgba(255, 255, 255, 0.10);
+.toast{
+  background: rgba(255,255,255,.10);
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 10px 14px;
@@ -296,139 +283,10 @@ button:focus-visible, .btn:focus-visible {
   backdrop-filter: blur(8px);
 }
 
-/* =========================
-   Overlays (countdown / flash / dim)
-   Make sure these IDs exist in your HTML.
-   ========================= */
-
-#countdownOverlay {
+/* Audio gate button */
+.audioGate{
   position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.92);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 8000;
-}
-
-#countdownText {
-  font-size: 160px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  text-align: center;
-}
-
-@media (max-width: 900px) {
-  #countdownText { font-size: 120px; }
-}
-@media (max-width: 600px) {
-  #countdownText { font-size: 96px; }
-}
-
-#flashOverlay {
-  position: fixed;
-  inset: 0;
-  background: transparent; /* text color swaps in JS */
-  z-index: 8500;
-  pointer-events: none;
-}
-
-#dimOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.50);
-  z-index: 2000;
-  pointer-events: none;
-}
-
-/* =========================
-   Weather footer (icon + text)
-   ========================= */
-
-.weather {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  color: var(--muted);
-}
-
-.weather__icon svg {
-  width: 22px;
-  height: 22px;
-  display: block;
-  fill: none;
-  stroke: #fff;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-/* ===== Bottom schedule dock (7 columns) ===== */
-#scheduleBottom {
-  padding: 10px 26px 14px 26px;
-  border-top: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.35);
-}
-
-.scheduleGrid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
-  align-items: stretch;
-}
-
-/* Each period cell */
-.scheduleGrid .row {
-  position: relative;
-  padding: 10px 10px 9px 12px;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.12);
-  opacity: 0.45; /* faded by default */
-}
-
-/* Top line: Period name */
-.scheduleGrid .row .label {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.1;
-}
-
-/* Bottom line: time */
-.scheduleGrid .row .time {
-  margin-top: 4px;
-  font-size: 13px;
-  opacity: 0.8;
-}
-
-/* Active highlight */
-.scheduleGrid .row.active {
-  opacity: 1;
-  background: rgba(255,255,255,0.10);
-}
-
-/* Accent bar */
-.scheduleGrid .row.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 4px;
-  background: #fff;
-}
-
-/* If screen gets narrow, wrap to fewer columns */
-@media (max-width: 1100px) {
-  .scheduleGrid { grid-template-columns: repeat(4, 1fr); }
-}
-@media (max-width: 820px) {
-  .scheduleGrid { grid-template-columns: repeat(2, 1fr); }
-}
-
-/* Hide weather when viewport is tight */
-@media (max-height: 520px), (max-width: 820px) {
-  #weather { display: none; }
+  right: 18px;
+  bottom: 18px;
+  z-index: 9998;
 }
