@@ -17,6 +17,19 @@
   const FLASH_MS = 5000;        // flash duration on timer end
   const FLASH_SWAP_MS = 250;    // color swap interval
 
+  // Hide "Next bell" line when <= this many seconds remain in period
+  const HIDE_NEXT_BELL_LAST_SECONDS = 60;
+
+  // Weather (minimal footer line)
+  // Defaulting to Dallas area. Change if you want:
+  const WEATHER = {
+    enabled: true,
+    // Dallas-ish. Adjust to your campus if you want.
+    lat: 32.7767,
+    lon: -96.7970,
+    refreshMinutes: 10
+  };
+
   const UI = {
     bg: '#000000',
     fg: '#ffffff',
@@ -44,6 +57,10 @@
   let gainNode = null;
   let audioReady = false;
 
+  // Weather cache
+  let lastWeatherText = 'Weather: --';
+  let lastWeatherFetchMs = 0;
+
   // ===== DOM =====
   const el = (id) => document.getElementById(id);
   const timeEl = el('time');
@@ -62,6 +79,9 @@
   const toastContainer = el('toastContainer');
   const audioGateBtn = el('audioGate');
 
+  // Add this element to index.html footer: <div id="weather"></div>
+  const weatherEl = el('weather'); // may be null if you haven't added it yet
+
   // ===== Toast helpers =====
   function showToast(msg, ms = 2000) {
     const t = document.createElement('div');
@@ -72,7 +92,7 @@
   }
 
   function hideAudioGate() {
-    audioGateBtn.classList.add('hidden');
+    audioGateBtn?.classList.add('hidden');
   }
 
   // ===== Audio helpers =====
@@ -107,18 +127,13 @@
   }
 
   function nowReal() {
-    // Real time in central / local depending on luxon availability
     if (luxonOK) return DateTime.now().setZone(SCHOOL_TZ);
     return new Date();
   }
 
   function now() {
-    // Simulated "now"
-    if (luxonOK) {
-      return nowReal().plus({ milliseconds: simOffsetMs });
-    } else {
-      return new Date(nowReal().getTime() + simOffsetMs);
-    }
+    if (luxonOK) return nowReal().plus({ milliseconds: simOffsetMs });
+    return new Date(nowReal().getTime() + simOffsetMs);
   }
 
   function addSeconds(t, secs) {
@@ -165,24 +180,19 @@
     return `${m}:${String(r).padStart(2, '0')}`;
   }
 
+  function minLeftCeil(seconds) {
+    // "only minutes left" (students can't argue with the tab 😄)
+    return Math.max(0, Math.ceil(seconds / 60));
+  }
+
   function todayRange() {
     const n = now();
     const startParts = parseHHMM(SCHOOL_HOURS.start);
     const endParts = parseHHMM(SCHOOL_HOURS.end);
 
     if (luxonOK) {
-      const start = n.set({
-        hour: startParts.h,
-        minute: startParts.m,
-        second: 0,
-        millisecond: 0
-      });
-      const end = n.set({
-        hour: endParts.h,
-        minute: endParts.m,
-        second: 0,
-        millisecond: 0
-      });
+      const start = n.set({ hour: startParts.h, minute: startParts.m, second: 0, millisecond: 0 });
+      const end = n.set({ hour: endParts.h, minute: endParts.m, second: 0, millisecond: 0 });
       return { start, end };
     } else {
       const year = n.getFullYear();
@@ -200,24 +210,19 @@
     const n = now();
 
     if (luxonOK) {
-      const blocks = list.map(({ label, start, end }) => {
+      return list.map(({ label, start, end }) => {
         const s = parseHHMM(start);
         const e = parseHHMM(end);
-        let sdt = n.set({
-          hour: s.h, minute: s.m, second: 0, millisecond: 0
-        });
-        let edt = n.set({
-          hour: e.h, minute: e.m, second: 0, millisecond: 0
-        });
+        let sdt = n.set({ hour: s.h, minute: s.m, second: 0, millisecond: 0 });
+        let edt = n.set({ hour: e.h, minute: e.m, second: 0, millisecond: 0 });
         if (edt <= sdt) edt = sdt.plus({ minutes: 1 });
         return { sdt, edt, label };
       }).sort((a, b) => a.sdt - b.sdt);
-      return blocks;
     } else {
       const year = n.getFullYear();
       const month = n.getMonth();
       const day = n.getDate();
-      const blocks = list.map(({ label, start, end }) => {
+      return list.map(({ label, start, end }) => {
         const s = parseHHMM(start);
         const e = parseHHMM(end);
         const sdt = new Date(year, month, day, s.h, s.m, 0, 0);
@@ -225,7 +230,6 @@
         if (edt <= sdt) edt = new Date(sdt.getTime() + 60 * 1000);
         return { sdt, edt, label };
       }).sort((a, b) => a.sdt - b.sdt);
-      return blocks;
     }
   }
 
@@ -260,28 +264,34 @@
       }
     }
 
-    // after last block
     return { state: 'noschedule' };
   }
 
-function updateTabTitle(stat, n) {
-  if (!stat || !stat.nextBell) {
-    document.title = 'School Bell Clock';
-    return;
+  // ===== Tab title (minutes only, refresh every minute) =====
+  function updateTabTitleMinutes() {
+    const n = now();
+    const blocks = buildBlocksFor(activeMode);
+    const stat = scheduleStatus(n, blocks);
+
+    // If timer running, we can optionally show timer minutes. Keeping it simple:
+    // If you want timer to override the tab title, tell me and I’ll switch it.
+
+    if (!stat || !stat.nextBell) {
+      document.title = 'School Bell Clock';
+      return;
+    }
+
+    const sec = secondsBetween(n, stat.nextBell);
+    const mins = minLeftCeil(sec);
+
+    if (stat.state === 'in_period') {
+      document.title = `⏰ ${mins} min left — ${stat.current}`;
+    } else if (stat.state === 'passing') {
+      document.title = `⏳ ${mins} min to ${stat.nextPeriodLabel}`;
+    } else {
+      document.title = 'School Bell Clock';
+    }
   }
-
-  const seconds = secondsBetween(n, stat.nextBell);
-  const remaining = mmss(seconds);
-
-  if (stat.state === 'in_period') {
-    document.title = `⏰ ${remaining} left — ${stat.current}`;
-  } else if (stat.state === 'passing') {
-    document.title = `⏳ ${remaining} to ${stat.nextPeriodLabel}`;
-  } else {
-    document.title = 'School Bell Clock';
-  }
-}
-
 
   // ===== Render helpers =====
   function renderClock(n) {
@@ -334,7 +344,13 @@ function updateTabTitle(stat, n) {
     if (stat.nextBell) {
       const seconds = secondsBetween(n, stat.nextBell);
       const bellStr = fmtHM(stat.nextBell);
-      nextEl.textContent = `Next bell: ${bellStr} • ${mmss(seconds)}`;
+
+      // ✅ Hide the "next bell timer" during the last minute of class (in_period only)
+      if (stat.state === 'in_period' && seconds <= HIDE_NEXT_BELL_LAST_SECONDS) {
+        nextEl.textContent = '';
+      } else {
+        nextEl.textContent = `Next bell: ${bellStr} • ${mmss(seconds)}`;
+      }
     } else {
       nextEl.textContent = '';
     }
@@ -366,6 +382,95 @@ function updateTabTitle(stat, n) {
     countdownText.style.color = flashToggle ? UI.flashA : UI.flashB;
   }
 
+  // ===== Weather (Open-Meteo, minimal) =====
+  function wmoToText(code) {
+    // Minimal mapping; unknown codes fall back to "Weather"
+    const m = {
+      0: 'Clear',
+      1: 'Mainly clear',
+      2: 'Partly cloudy',
+      3: 'Cloudy',
+      45: 'Fog',
+      48: 'Fog',
+      51: 'Drizzle',
+      53: 'Drizzle',
+      55: 'Drizzle',
+      61: 'Rain',
+      63: 'Rain',
+      65: 'Heavy rain',
+      71: 'Snow',
+      73: 'Snow',
+      75: 'Heavy snow',
+      77: 'Snow grains',
+      80: 'Showers',
+      81: 'Showers',
+      82: 'Heavy showers',
+      85: 'Snow showers',
+      86: 'Heavy snow showers',
+      95: 'Thunder',
+      96: 'Thunder + hail',
+      99: 'Thunder + hail'
+    };
+    return m[code] ?? 'Weather';
+  }
+
+  async function fetchWeather() {
+    if (!WEATHER.enabled || !weatherEl) return;
+
+    const nowMs = Date.now();
+    const minInterval = WEATHER.refreshMinutes * 60 * 1000;
+    if (nowMs - lastWeatherFetchMs < minInterval) return;
+
+    lastWeatherFetchMs = nowMs;
+
+    // Open-Meteo (no key, CORS supported) :contentReference[oaicite:1]{index=1}
+    const url =
+      `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${encodeURIComponent(WEATHER.lat)}` +
+      `&longitude=${encodeURIComponent(WEATHER.lon)}` +
+      `&current=temperature_2m,weather_code` +
+      `&daily=precipitation_probability_max,snowfall_sum` +
+      `&temperature_unit=fahrenheit` +
+      `&timezone=${encodeURIComponent(SCHOOL_TZ)}`;
+
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`weather ${res.status}`);
+      const data = await res.json();
+
+      const temp = data?.current?.temperature_2m;
+      const code = data?.current?.weather_code;
+      const text = wmoToText(code);
+
+      const pop = data?.daily?.precipitation_probability_max?.[0];
+      const snow = data?.daily?.snowfall_sum?.[0];
+
+      // Keep it minimal:
+      // Example: "Weather: 34°F Snow • PoP 70% • Snow 1.2"
+      let line = `Weather: `;
+      if (typeof temp === 'number') line += `${Math.round(temp)}°F `;
+      line += `${text}`;
+
+      const extras = [];
+      if (typeof pop === 'number') extras.push(`PoP ${Math.round(pop)}%`);
+      if (typeof snow === 'number' && snow > 0) extras.push(`Snow ${snow.toFixed(1)}`);
+
+      if (extras.length) line += ` • ${extras.join(' • ')}`;
+
+      lastWeatherText = line;
+      weatherEl.textContent = lastWeatherText;
+    } catch (e) {
+      // Don’t spam toasts for weather; keep it quiet/minimal
+      weatherEl.textContent = lastWeatherText;
+      // console.warn(e);
+    }
+  }
+
+  function renderWeather() {
+    if (!WEATHER.enabled || !weatherEl) return;
+    weatherEl.textContent = lastWeatherText;
+  }
+
   // ===== MAIN LOOP =====
   function loop() {
     const n = now();
@@ -374,7 +479,6 @@ function updateTabTitle(stat, n) {
 
     const blocks = buildBlocksFor(activeMode);
     const stat = scheduleStatus(n, blocks);
-    updateTabTitle(stat, n);
 
     // If a bell occurs during a timer → cancel timer and return bell view
     if (timerEnd && stat.nextBell && n >= stat.nextBell) {
@@ -391,7 +495,6 @@ function updateTabTitle(stat, n) {
     } else if (timerEnd) {
       const sec = secondsBetween(n, timerEnd);
       if (sec <= 0) {
-        // Time's up: play chime + start flash
         beep();
         flashUntil = addMillis(n, FLASH_MS);
         timerEnd = null;
@@ -406,10 +509,13 @@ function updateTabTitle(stat, n) {
       countdownText.style.color = UI.fg;
     }
 
-    // Normal content
     renderCenter(stat, n);
     renderScheduleTable(blocks, n);
     simTagEl.textContent = simOffsetMs ? 'SIM TIME' : '';
+
+    // Weather: cheap render (actual fetch is throttled)
+    renderWeather();
+    fetchWeather();
 
     requestAnimationFrame(loop);
   }
@@ -421,7 +527,7 @@ function updateTabTitle(stat, n) {
     flashUntil = null;
     showToast(`Timer: ${mmss(seconds)}`);
     ensureAudio();
-    beep(660, 120); // confirm chirp
+    beep(660, 120);
   }
 
   function cancelTimer() {
@@ -432,24 +538,25 @@ function updateTabTitle(stat, n) {
   }
 
   function toggleNineWeeks() {
-    if (activeMode === nineWeeksPair[0]) {
-      activeMode = nineWeeksPair[1];
-    } else if (activeMode === nineWeeksPair[1]) {
-      activeMode = nineWeeksPair[0];
-    } else {
-      activeMode = nineWeeksPair[0];
-    }
+    if (activeMode === nineWeeksPair[0]) activeMode = nineWeeksPair[1];
+    else if (activeMode === nineWeeksPair[1]) activeMode = nineWeeksPair[0];
+    else activeMode = nineWeeksPair[0];
+
     renderModeTag();
     showToast(activeMode);
+
+    // Tab title should reflect mode quickly
+    updateTabTitleMinutes();
   }
 
   function cycleMode() {
     if (!modesOrder.length) return;
     const i = modesOrder.indexOf(activeMode);
-    const j = (i + 1) % modesOrder.length;
-    activeMode = modesOrder[j];
+    activeMode = modesOrder[(i + 1) % modesOrder.length];
     renderModeTag();
     showToast(`Mode: ${activeMode}`);
+
+    updateTabTitleMinutes();
   }
 
   function keyHandler(e) {
@@ -462,25 +569,13 @@ function updateTabTitle(stat, n) {
 
       // Modes
       case 'r': case 'R':
-        if (schedules['Regular']) {
-          activeMode = 'Regular';
-          renderModeTag();
-          showToast('Mode: Regular');
-        }
+        if (schedules['Regular']) { activeMode = 'Regular'; renderModeTag(); showToast('Mode: Regular'); updateTabTitleMinutes(); }
         break;
       case 'p': case 'P':
-        if (schedules['Pep Rally']) {
-          activeMode = 'Pep Rally';
-          renderModeTag();
-          showToast('Mode: Pep Rally');
-        }
+        if (schedules['Pep Rally']) { activeMode = 'Pep Rally'; renderModeTag(); showToast('Mode: Pep Rally'); updateTabTitleMinutes(); }
         break;
       case 'e': case 'E':
-        if (schedules['Early Release']) {
-          activeMode = 'Early Release';
-          renderModeTag();
-          showToast('Mode: Early Release');
-        }
+        if (schedules['Early Release']) { activeMode = 'Early Release'; renderModeTag(); showToast('Mode: Early Release'); updateTabTitleMinutes(); }
         break;
       case 't': case 'T':
         toggleNineWeeks();
@@ -523,14 +618,17 @@ function updateTabTitle(stat, n) {
       case ']':
         simOffsetMs += 5 * 60 * 1000;
         showToast(`Sim +5m → ${fmtClock(now())}`);
+        updateTabTitleMinutes();
         break;
       case '[':
         simOffsetMs -= 5 * 60 * 1000;
         showToast(`Sim -5m → ${fmtClock(now())}`);
+        updateTabTitleMinutes();
         break;
       case '\\':
         simOffsetMs = 0;
         showToast('Sim reset');
+        updateTabTitleMinutes();
         break;
       case 'n': case 'N': {
         const n = now();
@@ -546,6 +644,7 @@ function updateTabTitle(stat, n) {
             : (target.getTime() - realNow.getTime());
 
           showToast(`Jump → ${fmtClock(target)}`);
+          updateTabTitleMinutes();
         } else {
           showToast('No next bell in this mode');
         }
@@ -554,11 +653,8 @@ function updateTabTitle(stat, n) {
 
       // Fullscreen shortcut
       case 'f': case 'F':
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen?.();
-        } else {
-          document.exitFullscreen?.();
-        }
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
         break;
     }
   }
@@ -566,6 +662,7 @@ function updateTabTitle(stat, n) {
   // ===== Fetch schedules =====
   async function fetchSchedules() {
     const url = SCHEDULES_URL + (SCHEDULES_URL.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
+
     let res;
     try {
       res = await fetch(url, { cache: 'no-store' });
@@ -578,6 +675,7 @@ function updateTabTitle(stat, n) {
       showToast(msg, 5000);
       throw new Error(msg);
     }
+
     const text = await res.text();
     let data;
     try {
@@ -599,54 +697,59 @@ function updateTabTitle(stat, n) {
 
     renderModeTag();
     showToast('Schedules loaded');
+
+    // Immediately sync tab title after schedule load
+    updateTabTitleMinutes();
   }
 
   // ===== Init =====
   reloadBtn.addEventListener('click', async () => {
-    try {
-      await fetchSchedules();
-    } catch (err) {
-      console.error(err);
-    }
+    try { await fetchSchedules(); } catch (err) { console.error(err); }
   });
 
   fullscreenBtn.addEventListener('click', () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.();
-    }
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
   });
 
   window.addEventListener('keydown', keyHandler);
 
   // Browser audio policy: require one user gesture
   ['click', 'keydown', 'pointerdown', 'touchstart'].forEach(evt => {
-    window.addEventListener(
-      evt,
-      () => {
-        if (!audioReady) {
-          try {
-            ensureAudio();
-            audioCtx.resume?.();
-          } catch {}
-        }
-      },
-      { once: true }
-    );
+    window.addEventListener(evt, () => {
+      if (!audioReady) {
+        try { ensureAudio(); audioCtx.resume?.(); } catch {}
+      }
+    }, { once: true });
   });
 
-  audioGateBtn.addEventListener('click', () => {
+  audioGateBtn?.addEventListener('click', () => {
     ensureAudio();
     audioCtx.resume?.();
   });
 
+  // ===== Tab title refresh (every minute) =====
+  // Run once immediately, then align to the next minute boundary, then every minute.
+  function startTabTitleMinuteTicker() {
+    updateTabTitleMinutes();
+    const msToNextMinute = 60000 - (Date.now() % 60000);
+    setTimeout(() => {
+      updateTabTitleMinutes();
+      setInterval(updateTabTitleMinutes, 60000);
+    }, msToNextMinute);
+  }
+
   // Start
   (async () => {
-    try {
-      await fetchSchedules();
-    } catch (err) {
-      console.error(err);
-    }
+    try { await fetchSchedules(); } catch (err) { console.error(err); }
     renderModeTag();
+    startTabTitleMinuteTicker();
+
+    // Start weather quickly
+    if (WEATHER.enabled && weatherEl) {
+      lastWeatherText = 'Weather: loading…';
+      fetchWeather();
+    }
+
     requestAnimationFrame(loop);
   })();
 })();
