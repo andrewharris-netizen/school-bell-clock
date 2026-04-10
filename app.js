@@ -14,15 +14,16 @@
   const SCHOOL_TZ = 'America/Chicago';
   const SCHOOL_HOURS = { start: '07:00', end: '17:00' };
   const FLASH_MS = 5000;
-  const FLASH_SWAP_MS = 250;
 
   // Hide "Next bell" line when <= this many seconds remain in a period
   const HIDE_NEXT_BELL_LAST_SECONDS = 60;
 
-  // Weather (minimal footer)
+  // 10/10 rule
+  const TEN_TEN_MINUTES = 10;
+
+  // Weather
   const WEATHER = {
     enabled: true,
-    // Dallas-ish default; change if you want campus-specific:
     lat: 32.7767,
     lon: -96.7970,
     refreshMinutes: 10
@@ -66,6 +67,7 @@
   const modeTagEl = el('modeTag');
   const simTagEl = el('simTag');
   const currEl = el('currentPeriod');
+  const tenTenBadgeEl = el('tenTenBadge');
   const nextEl = el('nextBell');
   const tableEl = el('scheduleTable');
   const countdownOverlay = el('countdownOverlay');
@@ -139,6 +141,16 @@
   function addSeconds(t, secs) {
     if (luxonOK) return t.plus({ seconds: secs });
     return new Date(t.getTime() + secs * 1000);
+  }
+
+  function addMinutes(t, mins) {
+    if (luxonOK) return t.plus({ minutes: mins });
+    return new Date(t.getTime() + mins * 60 * 1000);
+  }
+
+  function subtractMinutes(t, mins) {
+    if (luxonOK) return t.minus({ minutes: mins });
+    return new Date(t.getTime() - mins * 60 * 1000);
   }
 
   function addMillis(t, ms) {
@@ -237,6 +249,8 @@
         return {
           state: 'in_period',
           current: label,
+          currentStart: sdt,
+          currentEnd: edt,
           nextBell: edt,
           nextPeriodLabel: next ? next.label : null
         };
@@ -258,7 +272,18 @@
     return { state: 'noschedule' };
   }
 
-  // ===== Tab title (minutes only, update every minute) =====
+  function isTenTenActive(stat, n) {
+    if (!stat || stat.state !== 'in_period' || !stat.currentStart || !stat.currentEnd) {
+      return false;
+    }
+
+    const firstTenEnds = addMinutes(stat.currentStart, TEN_TEN_MINUTES);
+    const lastTenStarts = subtractMinutes(stat.currentEnd, TEN_TEN_MINUTES);
+
+    return (n >= stat.currentStart && n < firstTenEnds) || (n >= lastTenStarts && n < stat.currentEnd);
+  }
+
+  // ===== Tab title =====
   function updateTabTitleMinutes() {
     const n = now();
     const blocks = buildBlocksFor(activeMode);
@@ -300,44 +325,50 @@
     modeTagEl.textContent = `Mode: ${activeMode}`;
   }
 
-function renderScheduleTable(blocks, n) {
-  tableEl.innerHTML = '';
+  function renderScheduleTable(blocks, n) {
+    tableEl.innerHTML = '';
+    const periodBlocks = blocks.filter(b => /^(1st|2nd|3rd|4th|5th|6th|7th)\s+Period$/i.test(b.label));
 
-  // Keep only 1st–7th Period for the 7-column bottom grid
-  const periodBlocks = blocks.filter(b => /^(1st|2nd|3rd|4th|5th|6th|7th)\s+Period$/i.test(b.label));
+    let activeIndex = -1;
+    periodBlocks.forEach((b, i) => {
+      if (n >= b.sdt && n < b.edt) activeIndex = i;
+    });
 
-  let activeIndex = -1;
-  periodBlocks.forEach((b, i) => {
-    if (n >= b.sdt && n < b.edt) activeIndex = i;
-  });
+    periodBlocks.forEach((b, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'row' + (i === activeIndex ? ' active' : '');
 
-  periodBlocks.forEach((b, i) => {
-    const cell = document.createElement('div');
-    cell.className = 'row' + (i === activeIndex ? ' active' : '');
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = b.label.replace(' Period', '');
 
-    const label = document.createElement('div');
-    label.className = 'label';
-    label.textContent = b.label.replace(' Period', ''); // makes it cleaner: "1st"
+      const time = document.createElement('div');
+      time.className = 'time';
+      time.textContent = `${fmtHM(b.sdt)}–${fmtHM(b.edt)}`;
 
-    const time = document.createElement('div');
-    time.className = 'time';
-    time.textContent = `${fmtHM(b.sdt)}–${fmtHM(b.edt)}`;
+      cell.appendChild(label);
+      cell.appendChild(time);
+      tableEl.appendChild(cell);
+    });
+  }
 
-    cell.appendChild(label);
-    cell.appendChild(time);
-    tableEl.appendChild(cell);
-  });
-}
-
+  function renderTenTenBadge(show) {
+    if (!tenTenBadgeEl) return;
+    tenTenBadgeEl.classList.toggle('hidden', !show);
+  }
 
   function renderCenter(stat, n) {
     if (!stat || stat.state === 'noschedule') {
       currEl.textContent = 'No school schedule active';
       nextEl.textContent = '';
+      renderTenTenBadge(false);
       return;
     }
 
     currEl.textContent = stat.current || '';
+
+    const tenTenActive = isTenTenActive(stat, n);
+    renderTenTenBadge(tenTenActive);
 
     if (stat.nextBell) {
       const seconds = secondsBetween(n, stat.nextBell);
@@ -379,7 +410,7 @@ function renderScheduleTable(blocks, n) {
     countdownText.style.color = flashToggle ? UI.flashA : UI.flashB;
   }
 
-  // ===== Weather: icon + richer text =====
+  // ===== Weather =====
   function wmoToText(code) {
     const m = {
       0: 'Clear',
@@ -427,8 +458,6 @@ function renderScheduleTable(blocks, n) {
   }
 
   function svgIcon(kind) {
-    // Simple monochrome line icons (stroke only)
-    // Keep shapes minimal so it looks clean on TVs.
     switch (kind) {
       case 'clear':
         return `
@@ -463,9 +492,6 @@ function renderScheduleTable(blocks, n) {
         return `
 <svg viewBox="0 0 24 24" aria-hidden="true">
   <path d="M6 16h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 16z"></path>
-  <path d="M9 19h0"></path><path d="M9 19l0 0"></path>
-  <path d="M12 19h0"></path><path d="M12 19l0 0"></path>
-  <path d="M15 19h0"></path><path d="M15 19l0 0"></path>
   <circle cx="9" cy="19" r="0.8"></circle>
   <circle cx="12" cy="19" r="0.8"></circle>
   <circle cx="15" cy="19" r="0.8"></circle>
@@ -515,11 +541,10 @@ function renderScheduleTable(blocks, n) {
 
       const temp = data?.current?.temperature_2m;
       const code = data?.current?.weather_code;
-
       const hi = data?.daily?.temperature_2m_max?.[0];
       const lo = data?.daily?.temperature_2m_min?.[0];
       const pop = data?.daily?.precipitation_probability_max?.[0];
-      const snowCm = data?.daily?.snowfall_sum?.[0]; // Open-Meteo typically returns cm
+      const snowCm = data?.daily?.snowfall_sum?.[0];
       const snowIn = (typeof snowCm === 'number') ? (snowCm / 2.54) : null;
 
       const cond = wmoToText(code);
@@ -536,7 +561,6 @@ function renderScheduleTable(blocks, n) {
       if (typeof pop === 'number') parts.push(`PoP ${Math.round(pop)}%`);
 
       if (typeof snowIn === 'number' && snowIn > 0.05) {
-        // Show to 0.1" precision
         parts.push(`Snow ${snowIn.toFixed(1)}"`);
       }
 
@@ -546,7 +570,6 @@ function renderScheduleTable(blocks, n) {
       weatherIconEl.innerHTML = svgIcon(kind);
       weatherTextEl.textContent = lastWeatherText;
     } catch {
-      // Quiet failure: keep last known weather text/icon
       if (lastWeatherCode != null) {
         weatherIconEl.innerHTML = svgIcon(codeToIconKind(lastWeatherCode));
       }
@@ -562,7 +585,7 @@ function renderScheduleTable(blocks, n) {
     }
   }
 
-  // ===== MAIN LOOP =====
+  // ===== Main loop =====
   function loop() {
     const n = now();
     renderClock(n);
@@ -571,7 +594,6 @@ function renderScheduleTable(blocks, n) {
     const blocks = buildBlocksFor(activeMode);
     const stat = scheduleStatus(n, blocks);
 
-    // Bell cancels timer
     if (timerEnd && stat.nextBell && n >= stat.nextBell) {
       timerEnd = null;
       flashUntil = null;
@@ -579,7 +601,6 @@ function renderScheduleTable(blocks, n) {
       showToast('Timer canceled (bell)');
     }
 
-    // Timer + flash
     if (flashUntil && n < flashUntil) {
       showCountdown('0:00');
       setFlashLayer(n);
@@ -654,7 +675,6 @@ function renderScheduleTable(blocks, n) {
         document.exitFullscreen?.();
         break;
 
-      // Modes
       case 'r': case 'R':
         if (schedules['Regular']) { activeMode = 'Regular'; renderModeTag(); showToast('Mode: Regular'); updateTabTitleMinutes(); }
         break;
@@ -671,13 +691,11 @@ function renderScheduleTable(blocks, n) {
         cycleMode();
         break;
 
-      // Timers
       case '1': startTimer(30); break;
       case '5': startTimer(300); break;
       case '0': startTimer(600); break;
       case 'Backspace': cancelTimer(); break;
 
-      // Audio
       case 'm': case 'M':
         muted = !muted;
         showToast(muted ? 'Muted' : 'Unmuted');
@@ -693,7 +711,6 @@ function renderScheduleTable(blocks, n) {
         showToast(`Volume: ${Math.round(volume * 100)}%`);
         break;
 
-      // Simulation
       case ']':
         simOffsetMs += 5 * 60 * 1000;
         showToast(`Sim +5m → ${fmtClock(now())}`);
@@ -730,7 +747,6 @@ function renderScheduleTable(blocks, n) {
         break;
       }
 
-      // Fullscreen
       case 'f': case 'F':
         if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
         else document.exitFullscreen?.();
@@ -749,6 +765,7 @@ function renderScheduleTable(blocks, n) {
       showToast(`Fetch failed: ${e.message}`, 5000);
       throw e;
     }
+
     if (!res.ok) {
       const msg = `Fetch schedules failed: ${res.status} ${res.statusText}`;
       showToast(msg, 5000);
@@ -772,6 +789,7 @@ function renderScheduleTable(blocks, n) {
       showToast(msg, 5000);
       throw new Error(msg);
     }
+
     if (!schedules[activeMode]) activeMode = modesOrder[0];
 
     renderModeTag();
@@ -803,7 +821,6 @@ function renderScheduleTable(blocks, n) {
     audioCtx.resume?.();
   });
 
-  // Start
   (async () => {
     try { await fetchSchedules(); } catch (err) { console.error(err); }
     renderModeTag();
