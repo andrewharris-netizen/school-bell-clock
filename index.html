@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- Prefer local copy; fall back to CDN if available -->
+  <!-- Prefer the local Luxon copy; fall back to CDN if needed. -->
   <script src="luxon.min.js"></script>
   <script>
     if (typeof window.luxon === 'undefined') {
@@ -18,54 +18,109 @@
 <body>
   <div id="app">
     <header>
-      <div class="left">
-        <div id="time">--:--:--</div>
-        <div id="date">---</div>
-      </div>
+      <div class="headerSpacer" aria-hidden="true"></div>
 
-      <div class="right">
-        <div id="modeTag">Mode: --</div>
-        <div id="simTag" class="muted"></div>
-        <button id="reloadBtn" title="Fetch schedules again">Reload schedules</button>
-        <button id="fullscreenBtn" title="Fullscreen (Esc to exit)">Fullscreen</button>
+      <div class="headerControls">
+        <div id="modeTag" class="statusTag">Mode: --</div>
+        <div id="lunchTag" class="statusTag hidden">Lunch: A</div>
+        <div id="simTag" class="statusTag simTag hidden">SIM TIME</div>
+        <button id="timerTag" class="statusTag timerTag hidden" type="button" title="Open timer">Timer 0:00</button>
+        <button id="reloadBtn" class="utilityBtn" type="button" title="Fetch schedules again">Reload</button>
+        <button id="fullscreenBtn" class="utilityBtn" type="button" title="Fullscreen">Fullscreen</button>
       </div>
     </header>
 
-    <main>
-      <section id="centerInfo">
-        <div id="currentPeriod" class="line"></div>
-        <div id="tenTenBadge" class="hidden">10/10 active — no passes</div>
-        <div id="nextBell" class="line"></div>
+    <main id="mainStage">
+      <section id="clockPanel" aria-label="School clock">
+        <div id="time">--:--:--</div>
+        <div id="date">---</div>
+
+        <div class="clockDivider"></div>
+
+        <div id="currentPeriod"></div>
+
+        <div id="tenTenBadge" class="hidden" role="status" aria-live="polite">
+          <span class="tenTenIcon" aria-hidden="true">!</span>
+          <span>10/10 ACTIVE — NO PASSES</span>
+        </div>
+
+        <div id="lunchStatus" class="hidden"></div>
+        <div id="nextBell"></div>
       </section>
 
-      <div id="countdownOverlay" class="overlay hidden">
-        <div id="countdownText">0:00</div>
-      </div>
+      <aside id="timerPanel" class="hidden" aria-label="Timer controls">
+        <div class="timerPanelHeader">
+          <div>
+            <div class="eyebrow">CLASSROOM TOOL</div>
+            <h2>Timer</h2>
+          </div>
+          <button id="closeTimerBtn" class="iconBtn" type="button" aria-label="Close timer">×</button>
+        </div>
 
-      <div id="flashOverlay" class="overlay hidden"></div>
-      <div id="dimOverlay" class="overlay hidden"></div>
+        <div id="timerChooser">
+          <div class="timerPresetGrid" aria-label="Timer presets">
+            <button class="timerPreset" type="button" data-seconds="30">30 sec</button>
+            <button class="timerPreset" type="button" data-seconds="60">1 min</button>
+            <button class="timerPreset" type="button" data-seconds="120">2 min</button>
+            <button class="timerPreset" type="button" data-seconds="180">3 min</button>
+            <button class="timerPreset" type="button" data-seconds="300">5 min</button>
+            <button class="timerPreset" type="button" data-seconds="600">10 min</button>
+          </div>
+
+          <button id="customTimerBtn" class="customTimerBtn" type="button">
+            <span class="customClockIcon" aria-hidden="true">◷</span>
+            Custom Timer
+          </button>
+
+          <div id="customTimerEditor" class="customTimerEditor hidden">
+            <div class="customLabel">Custom duration</div>
+
+            <div class="customTimerControls">
+              <button id="customMinusBtn" class="roundControl" type="button" aria-label="Subtract one minute">−</button>
+              <div id="customTimeDisplay" class="customTimeDisplay">7:00</div>
+              <button id="customPlusBtn" class="roundControl" type="button" aria-label="Add one minute">+</button>
+            </div>
+
+            <button id="startCustomTimerBtn" class="primaryTimerBtn" type="button">Start Timer</button>
+          </div>
+
+          <div class="timerHint">Press T or Esc to close</div>
+        </div>
+
+        <div id="timerRunningState" class="hidden" aria-live="polite">
+          <div id="timerRunningLabel" class="timerRunningLabel">TIMER RUNNING</div>
+          <div id="timerDisplay">0:00</div>
+
+          <div class="runningTimerActions">
+            <button id="addMinuteBtn" class="timerActionBtn" type="button">+1 Minute</button>
+            <button id="cancelTimerBtn" class="timerActionBtn dangerBtn" type="button">Cancel Timer</button>
+          </div>
+
+          <div class="timerHint">Press T to hide the panel without canceling</div>
+        </div>
+      </aside>
     </main>
-    
-    <section id="scheduleBottom">
-      <div id="scheduleTable" class="scheduleGrid"></div>
+
+    <section id="scheduleDock" aria-label="Today's schedule">
+      <div id="scheduleTable"></div>
     </section>
 
     <footer>
-      <div class="muted">
-        Keys: R/P/E/T/S modes · 1/5/0 timers · Backspace cancel · M mute · +/- volume · [ / ] / \ / N simulate · F fullscreen
+      <div id="keyHints" class="footerInstructions">
+        R Regular · P Pep Rally · E Early Release · A/B Nine Weeks · L Lunch · T Timer · N Now · J Next Bell Test · M Mute · F Fullscreen
       </div>
 
       <div id="weather" class="weather muted">
-        <span id="weatherIcon" class="weather__icon" aria-hidden="true"></span>
-        <span id="weatherText"></span>
+        <span id="weatherIcon" class="weatherIcon" aria-hidden="true"></span>
+        <span id="weatherText">Weather: --</span>
       </div>
     </footer>
   </div>
 
-  <div id="toastContainer"></div>
+  <div id="toastContainer" aria-live="polite"></div>
+  <div id="dimOverlay" class="hidden" aria-hidden="true"></div>
 
-  <!-- Touch once to enable audio in browsers -->
-  <button id="audioGate" class="audioGate">Click here once to enable sound</button>
+  <button id="audioGate" class="audioGate" type="button">Enable sound</button>
 
   <script src="app.js"></script>
 </body>

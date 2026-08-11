@@ -1,7 +1,7 @@
 /* global luxon */
 (() => {
   // =========================================================
-  // LUXON / TIMEZONE
+  // TIMEZONE / LUXON
   // =========================================================
 
   let DateTime;
@@ -12,47 +12,30 @@
     luxonOK = true;
   }
 
-
   // =========================================================
   // CONFIG
   // =========================================================
 
-  // IMPORTANT:
-  // This URL does NOT contain a specific Gist revision hash.
-  // That means edits to the Gist can be picked up by Reload Schedules.
   const SCHEDULES_URL =
     'https://gist.githubusercontent.com/andrewharris-netizen/f731d56672883762b9ba4c3b9b588b38/raw/gistfile1.txt';
 
   const SCHOOL_TZ = 'America/Chicago';
+  const SCHOOL_HOURS = { start: '07:00', end: '17:00' };
 
-  const SCHOOL_HOURS = {
-    start: '07:00',
-    end: '17:00'
-  };
-
-  const FLASH_MS = 5000;
-  const FLASH_SWAP_MS = 250;
-
-  // Hide the visible next-bell countdown during the final minute.
+  const TEN_TEN_MINUTES = 10;
   const HIDE_NEXT_BELL_LAST_SECONDS = 60;
 
-  // 10/10 rule
-  const TEN_TEN_MINUTES = 10;
+  const TIMER_FLASH_MS = 5000;
+  const TIMER_FLASH_SWAP_MS = 250;
+  const CUSTOM_TIMER_MIN = 1;
+  const CUSTOM_TIMER_MAX = 120;
 
-  // Weather
   const WEATHER = {
     enabled: true,
     lat: 32.7767,
     lon: -96.7970,
     refreshMinutes: 10
   };
-
-  const UI = {
-    fg: '#ffffff',
-    flashA: '#ffffff',
-    flashB: '#e00000'
-  };
-
 
   // =========================================================
   // STATE
@@ -62,116 +45,81 @@
   let modesOrder = [];
   let activeMode = 'Regular';
 
-  const nineWeeksPair = [
-    'Nine Weeks A (1/3/5/7)',
-    'Nine Weeks B (2/4/5/6)'
-  ];
+  const nineWeeksA = 'Nine Weeks A (1/3/5/7)';
+  const nineWeeksB = 'Nine Weeks B (2/4/5/6)';
 
-  // Timer
+  const lunchOrder = ['A', 'B', 'C', 'D'];
+  let selectedLunch = loadSavedLunch();
+
+  let simOffsetMs = 0;
+
+  let timerPanelOpen = false;
   let timerEnd = null;
-  let flashUntil = null;
-  let flashToggle = false;
-  let lastFlashSwapMs = 0;
+  let timerBellCutoff = null;
+  let timerFlashUntil = null;
+  let timerFlashToggle = false;
+  let lastTimerFlashSwapMs = 0;
+  let customTimerMinutes = 7;
 
-  // Audio
   let volume = 0.6;
   let muted = false;
   let audioCtx = null;
   let gainNode = null;
   let audioReady = false;
 
-  // Simulation
-  let simOffsetMs = 0;
-
-  // Weather cache
   let lastWeatherText = 'Weather: --';
   let lastWeatherCode = null;
   let lastWeatherFetchMs = 0;
 
-  // Lunch
-  const lunchOrder = ['A', 'B', 'C', 'D'];
-
-  let selectedLunch = loadSavedLunch();
-
-
   // =========================================================
-  // DOM ELEMENTS
+  // DOM
   // =========================================================
 
   const el = (id) => document.getElementById(id);
 
+  const appEl = el('app');
+
   const timeEl = el('time');
   const dateEl = el('date');
-
   const modeTagEl = el('modeTag');
+  const lunchTagEl = el('lunchTag');
   const simTagEl = el('simTag');
+  const timerTagEl = el('timerTag');
 
   const currEl = el('currentPeriod');
+  const tenTenBadgeEl = el('tenTenBadge');
+  const lunchStatusEl = el('lunchStatus');
   const nextEl = el('nextBell');
 
-  const tableEl = el('scheduleTable');
+  const scheduleTableEl = el('scheduleTable');
 
-  const countdownOverlay = el('countdownOverlay');
-  const countdownText = el('countdownText');
-  const flashOverlay = el('flashOverlay');
-  const dimOverlay = el('dimOverlay');
+  const timerPanelEl = el('timerPanel');
+  const closeTimerBtn = el('closeTimerBtn');
+  const timerChooserEl = el('timerChooser');
+  const timerRunningStateEl = el('timerRunningState');
+  const timerRunningLabelEl = el('timerRunningLabel');
+  const timerDisplayEl = el('timerDisplay');
+
+  const customTimerBtn = el('customTimerBtn');
+  const customTimerEditorEl = el('customTimerEditor');
+  const customMinusBtn = el('customMinusBtn');
+  const customPlusBtn = el('customPlusBtn');
+  const customTimeDisplayEl = el('customTimeDisplay');
+  const startCustomTimerBtn = el('startCustomTimerBtn');
+
+  const addMinuteBtn = el('addMinuteBtn');
+  const cancelTimerBtn = el('cancelTimerBtn');
 
   const reloadBtn = el('reloadBtn');
   const fullscreenBtn = el('fullscreenBtn');
-
-  const toastContainer = el('toastContainer');
-  const audioGateBtn = el('audioGate');
 
   const weatherEl = el('weather');
   const weatherIconEl = el('weatherIcon');
   const weatherTextEl = el('weatherText');
 
-  // These can already exist in HTML, or the script will create them.
-  let tenTenBadgeEl = el('tenTenBadge');
-  let lunchTagEl = el('lunchTag');
-  let lunchStatusEl = el('lunchStatus');
-
-
-  // =========================================================
-  // CREATE OPTIONAL UI ELEMENTS
-  // =========================================================
-
-  function createTenTenBadgeIfNeeded() {
-    if (tenTenBadgeEl || !currEl) return;
-
-    tenTenBadgeEl = document.createElement('div');
-    tenTenBadgeEl.id = 'tenTenBadge';
-    tenTenBadgeEl.textContent = '10/10 active — no passes';
-    tenTenBadgeEl.classList.add('hidden');
-
-    currEl.insertAdjacentElement('afterend', tenTenBadgeEl);
-  }
-
-
-  function createLunchTagIfNeeded() {
-    if (lunchTagEl || !modeTagEl) return;
-
-    lunchTagEl = document.createElement('div');
-    lunchTagEl.id = 'lunchTag';
-    lunchTagEl.classList.add('hidden');
-
-    modeTagEl.insertAdjacentElement('afterend', lunchTagEl);
-  }
-
-
-  function createLunchStatusIfNeeded() {
-    if (lunchStatusEl || !currEl) return;
-
-    lunchStatusEl = document.createElement('div');
-    lunchStatusEl.id = 'lunchStatus';
-    lunchStatusEl.classList.add('hidden');
-
-    // Keep the 10/10 badge directly underneath Current Period.
-    const anchor = tenTenBadgeEl || currEl;
-
-    anchor.insertAdjacentElement('afterend', lunchStatusEl);
-  }
-
+  const toastContainer = el('toastContainer');
+  const dimOverlay = el('dimOverlay');
+  const audioGateBtn = el('audioGate');
 
   // =========================================================
   // LOCAL STORAGE
@@ -180,523 +128,258 @@
   function loadSavedLunch() {
     try {
       const saved = localStorage.getItem('selectedLunch');
-
-      if (lunchOrder.includes(saved)) {
-        return saved;
-      }
+      return lunchOrder.includes(saved) ? saved : 'A';
     } catch {
-      // localStorage may be unavailable in highly restricted browsers.
+      return 'A';
     }
-
-    return 'A';
   }
-
 
   function saveLunch() {
     try {
       localStorage.setItem('selectedLunch', selectedLunch);
     } catch {
-      // The app can still work without persistence.
+      // Persistence is optional.
     }
   }
-
 
   // =========================================================
   // TOASTS
   // =========================================================
 
-  function showToast(msg, ms = 2000) {
+  function showToast(message, ms = 2000) {
     if (!toastContainer) return;
 
     const toast = document.createElement('div');
-
     toast.className = 'toast';
-    toast.textContent = msg;
-
+    toast.textContent = message;
     toastContainer.appendChild(toast);
 
-    setTimeout(() => {
-      toast.remove();
-    }, ms);
+    setTimeout(() => toast.remove(), ms);
   }
-
 
   // =========================================================
   // AUDIO
   // =========================================================
 
-  function hideAudioGate() {
-    audioGateBtn?.classList.add('hidden');
-  }
-
-
   function ensureAudio() {
     if (audioReady) return;
 
-    const AudioContext =
-      window.AudioContext ||
-      window.webkitAudioContext;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
 
-    if (!AudioContext) return;
-
-    audioCtx = new AudioContext();
-
+    audioCtx = new AudioContextCtor();
     gainNode = audioCtx.createGain();
     gainNode.gain.value = volume;
     gainNode.connect(audioCtx.destination);
-
     audioReady = true;
 
-    hideAudioGate();
+    audioGateBtn?.classList.add('hidden');
   }
-
 
   function beep(freq = 880, ms = 180) {
     if (!audioReady || muted || !audioCtx || !gainNode) return;
 
-    const oscillator = audioCtx.createOscillator();
+    const osc = audioCtx.createOscillator();
     const toneGain = audioCtx.createGain();
 
-    oscillator.type = 'sine';
-    oscillator.frequency.value = freq;
-
+    osc.type = 'sine';
+    osc.frequency.value = freq;
     toneGain.gain.value = 1;
 
-    oscillator
-      .connect(toneGain)
-      .connect(gainNode);
-
-    oscillator.start();
-
-    oscillator.stop(
-      audioCtx.currentTime + ms / 1000
-    );
+    osc.connect(toneGain).connect(gainNode);
+    osc.start();
+    osc.stop(audioCtx.currentTime + ms / 1000);
   }
-
 
   // =========================================================
   // TIME HELPERS
   // =========================================================
 
-  function parseHHMM(str) {
-    const [h, m] = str.split(':').map(Number);
-
-    return {
-      h,
-      m
-    };
+  function parseHHMM(value) {
+    const [h, m] = value.split(':').map(Number);
+    return { h, m };
   }
 
-
   function nowReal() {
-    if (luxonOK) {
-      return DateTime
-        .now()
-        .setZone(SCHOOL_TZ);
-    }
-
+    if (luxonOK) return DateTime.now().setZone(SCHOOL_TZ);
     return new Date();
   }
 
-
   function now() {
-    if (luxonOK) {
-      return nowReal().plus({
-        milliseconds: simOffsetMs
-      });
-    }
-
-    return new Date(
-      nowReal().getTime() + simOffsetMs
-    );
+    if (luxonOK) return nowReal().plus({ milliseconds: simOffsetMs });
+    return new Date(nowReal().getTime() + simOffsetMs);
   }
-
 
   function addSeconds(t, seconds) {
-    if (luxonOK) {
-      return t.plus({
-        seconds
-      });
-    }
-
-    return new Date(
-      t.getTime() + seconds * 1000
-    );
+    if (luxonOK) return t.plus({ seconds });
+    return new Date(t.getTime() + seconds * 1000);
   }
-
 
   function addMinutes(t, minutes) {
-    if (luxonOK) {
-      return t.plus({
-        minutes
-      });
-    }
-
-    return new Date(
-      t.getTime() + minutes * 60000
-    );
+    if (luxonOK) return t.plus({ minutes });
+    return new Date(t.getTime() + minutes * 60000);
   }
-
 
   function subtractMinutes(t, minutes) {
-    if (luxonOK) {
-      return t.minus({
-        minutes
-      });
-    }
-
-    return new Date(
-      t.getTime() - minutes * 60000
-    );
+    if (luxonOK) return t.minus({ minutes });
+    return new Date(t.getTime() - minutes * 60000);
   }
-
 
   function addMillis(t, milliseconds) {
-    if (luxonOK) {
-      return t.plus({
-        milliseconds
-      });
-    }
-
-    return new Date(
-      t.getTime() + milliseconds
-    );
+    if (luxonOK) return t.plus({ milliseconds });
+    return new Date(t.getTime() + milliseconds);
   }
-
 
   function secondsBetween(a, b) {
     if (!a || !b) return 0;
-
-    if (luxonOK) {
-      return b.diff(a, 'seconds').seconds;
-    }
-
-    return (
-      b.getTime() - a.getTime()
-    ) / 1000;
+    if (luxonOK) return b.diff(a, 'seconds').seconds;
+    return (b.getTime() - a.getTime()) / 1000;
   }
-
 
   function fmtClock(t) {
-    if (luxonOK) {
-      return t.toFormat('h:mm:ss a');
-    }
-
-    return t.toLocaleTimeString(
-      'en-US',
-      {
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit'
-      }
-    );
+    if (luxonOK) return t.toFormat('h:mm:ss a');
+    return t.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   }
-
 
   function fmtDate(t) {
-    if (luxonOK) {
-      return t.toFormat(
-        'EEE, LLL dd, yyyy'
-      );
-    }
-
-    return t.toLocaleDateString(
-      'en-US',
-      {
-        weekday: 'short',
-        month: 'short',
-        day: '2-digit',
-        year: 'numeric'
-      }
-    );
+    if (luxonOK) return t.toFormat('EEE, LLL dd, yyyy');
+    return t.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric'
+    });
   }
-
 
   function fmtHM(t) {
-    if (luxonOK) {
-      return t.toFormat('h:mm a');
-    }
-
-    return t.toLocaleTimeString(
-      'en-US',
-      {
-        hour: 'numeric',
-        minute: '2-digit'
-      }
-    );
+    if (luxonOK) return t.toFormat('h:mm a');
+    return t.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
-
 
   function mmss(seconds) {
-    const total = Math.max(
-      0,
-      Math.round(seconds)
-    );
-
-    const minutes =
-      Math.floor(total / 60);
-
-    const remainingSeconds =
-      total % 60;
-
-    return (
-      `${minutes}:` +
-      `${String(remainingSeconds).padStart(2, '0')}`
-    );
+    const whole = Math.max(0, Math.ceil(seconds));
+    const minutes = Math.floor(whole / 60);
+    const secs = whole % 60;
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
   }
-
-
-  function minLeftCeil(seconds) {
-    return Math.max(
-      0,
-      Math.ceil(seconds / 60)
-    );
-  }
-
 
   function todayRange() {
     const n = now();
-
-    const startParts =
-      parseHHMM(SCHOOL_HOURS.start);
-
-    const endParts =
-      parseHHMM(SCHOOL_HOURS.end);
+    const start = parseHHMM(SCHOOL_HOURS.start);
+    const end = parseHHMM(SCHOOL_HOURS.end);
 
     if (luxonOK) {
       return {
-        start: n.set({
-          hour: startParts.h,
-          minute: startParts.m,
-          second: 0,
-          millisecond: 0
-        }),
-
-        end: n.set({
-          hour: endParts.h,
-          minute: endParts.m,
-          second: 0,
-          millisecond: 0
-        })
+        start: n.set({ hour: start.h, minute: start.m, second: 0, millisecond: 0 }),
+        end: n.set({ hour: end.h, minute: end.m, second: 0, millisecond: 0 })
       };
     }
 
     return {
-      start: new Date(
-        n.getFullYear(),
-        n.getMonth(),
-        n.getDate(),
-        startParts.h,
-        startParts.m,
-        0,
-        0
-      ),
-
-      end: new Date(
-        n.getFullYear(),
-        n.getMonth(),
-        n.getDate(),
-        endParts.h,
-        endParts.m,
-        0,
-        0
-      )
+      start: new Date(n.getFullYear(), n.getMonth(), n.getDate(), start.h, start.m, 0, 0),
+      end: new Date(n.getFullYear(), n.getMonth(), n.getDate(), end.h, end.m, 0, 0)
     };
   }
 
-
   // =========================================================
-  // SCHEDULE HELPERS
+  // SCHEDULES
   // =========================================================
 
   function getModeData(modeName) {
     return schedules[modeName] || null;
   }
 
-
   function getPeriodList(modeName) {
     const mode = getModeData(modeName);
-
     if (!mode) return [];
 
-    // Backward compatibility with the original JSON.
-    if (Array.isArray(mode)) {
-      return mode;
-    }
-
+    // Backward compatibility with the original array-only Gist format.
+    if (Array.isArray(mode)) return mode;
     return mode.periods || [];
   }
 
-
   function buildBlocksFor(modeName) {
     const list = getPeriodList(modeName);
-
     const n = now();
 
     if (luxonOK) {
-      return list
-        .map(({ label, start, end }) => {
-          const s = parseHHMM(start);
-          const e = parseHHMM(end);
+      return list.map(({ label, start, end }) => {
+        const s = parseHHMM(start);
+        const e = parseHHMM(end);
 
-          const startDate = n.set({
-            hour: s.h,
-            minute: s.m,
-            second: 0,
-            millisecond: 0
-          });
+        const sdt = n.set({ hour: s.h, minute: s.m, second: 0, millisecond: 0 });
+        let edt = n.set({ hour: e.h, minute: e.m, second: 0, millisecond: 0 });
 
-          let endDate = n.set({
-            hour: e.h,
-            minute: e.m,
-            second: 0,
-            millisecond: 0
-          });
-
-          if (endDate <= startDate) {
-            endDate = startDate.plus({
-              minutes: 1
-            });
-          }
-
-          return {
-            label,
-            sdt: startDate,
-            edt: endDate
-          };
-        })
-        .sort(
-          (a, b) => a.sdt - b.sdt
-        );
+        if (edt <= sdt) edt = sdt.plus({ minutes: 1 });
+        return { label, sdt, edt };
+      }).sort((a, b) => a.sdt - b.sdt);
     }
 
     const year = n.getFullYear();
     const month = n.getMonth();
     const day = n.getDate();
 
-    return list
-      .map(({ label, start, end }) => {
-        const s = parseHHMM(start);
-        const e = parseHHMM(end);
+    return list.map(({ label, start, end }) => {
+      const s = parseHHMM(start);
+      const e = parseHHMM(end);
 
-        const startDate = new Date(
-          year,
-          month,
-          day,
-          s.h,
-          s.m,
-          0,
-          0
-        );
+      const sdt = new Date(year, month, day, s.h, s.m, 0, 0);
+      let edt = new Date(year, month, day, e.h, e.m, 0, 0);
 
-        let endDate = new Date(
-          year,
-          month,
-          day,
-          e.h,
-          e.m,
-          0,
-          0
-        );
-
-        if (endDate <= startDate) {
-          endDate = new Date(
-            startDate.getTime() + 60000
-          );
-        }
-
-        return {
-          label,
-          sdt: startDate,
-          edt: endDate
-        };
-      })
-      .sort(
-        (a, b) => a.sdt - b.sdt
-      );
+      if (edt <= sdt) edt = new Date(sdt.getTime() + 60000);
+      return { label, sdt, edt };
+    }).sort((a, b) => a.sdt - b.sdt);
   }
 
-
   function scheduleStatus(n, blocks) {
-    if (!blocks.length) {
-      return {
-        state: 'noschedule'
-      };
-    }
+    if (!blocks.length) return { state: 'noschedule' };
 
-    for (
-      let i = 0;
-      i < blocks.length;
-      i++
-    ) {
-      const {
-        sdt,
-        edt,
-        label
-      } = blocks[i];
+    for (let i = 0; i < blocks.length; i += 1) {
+      const block = blocks[i];
 
-      // Currently inside a scheduled block.
-      if (
-        n >= sdt &&
-        n < edt
-      ) {
-        const next =
-          blocks[i + 1];
-
+      if (n >= block.sdt && n < block.edt) {
+        const next = blocks[i + 1] || null;
         return {
           state: 'in_period',
-          current: label,
-
-          currentStart: sdt,
-          currentEnd: edt,
-
-          nextBell: edt,
-
-          nextPeriodLabel:
-            next
-              ? next.label
-              : null
+          current: block.label,
+          currentStart: block.sdt,
+          currentEnd: block.edt,
+          nextBell: block.edt,
+          nextPeriodLabel: next ? next.label : null
         };
       }
 
-      // Passing period before this block.
-      if (n < sdt) {
-        const previous =
-          blocks[i - 1];
+      if (n < block.sdt) {
+        const previous = blocks[i - 1] || null;
 
-        if (
-          !previous ||
-          previous.edt <= n
-        ) {
+        if (!previous || previous.edt <= n) {
           return {
             state: 'passing',
-            current:
-              'Passing Period',
-
-            nextBell: sdt,
-
-            nextPeriodLabel:
-              label
+            current: 'Passing Period',
+            nextBell: block.sdt,
+            nextPeriodLabel: block.label
           };
         }
       }
     }
 
-    return {
-      state: 'noschedule'
-    };
+    return { state: 'noschedule' };
   }
 
+  function isClassPeriodLabel(label) {
+    return /^(1st|2nd|3rd|4th|5th|6th|7th)\s+Period$/i.test(label || '');
+  }
 
   // =========================================================
   // 10/10 RULE
   // =========================================================
-
-  function isClassPeriodLabel(label) {
-    return /^(1st|2nd|3rd|4th|5th|6th|7th)\s+Period$/i
-      .test(label || '');
-  }
-
 
   function isTenTenActive(stat, n) {
     if (
@@ -709,302 +392,405 @@
       return false;
     }
 
-    const firstTenEnds =
-      addMinutes(
-        stat.currentStart,
-        TEN_TEN_MINUTES
-      );
+    const firstTenEnds = addMinutes(stat.currentStart, TEN_TEN_MINUTES);
+    const lastTenStarts = subtractMinutes(stat.currentEnd, TEN_TEN_MINUTES);
 
-    const lastTenStarts =
-      subtractMinutes(
-        stat.currentEnd,
-        TEN_TEN_MINUTES
-      );
-
-    const firstTen =
-      n >= stat.currentStart &&
-      n < firstTenEnds;
-
-    const lastTen =
-      n >= lastTenStarts &&
-      n < stat.currentEnd;
-
-    return firstTen || lastTen;
+    return (
+      (n >= stat.currentStart && n < firstTenEnds) ||
+      (n >= lastTenStarts && n < stat.currentEnd)
+    );
   }
-
-
-  function renderTenTenBadge(active) {
-    if (!tenTenBadgeEl) return;
-
-    tenTenBadgeEl
-      .classList
-      .toggle(
-        'hidden',
-        !active
-      );
-  }
-
 
   // =========================================================
   // LUNCH
   // =========================================================
 
   function getLunchesForMode(modeName) {
-    const mode =
-      getModeData(modeName);
-
-    if (
-      !mode ||
-      Array.isArray(mode) ||
-      !mode.lunches
-    ) {
-      return {};
-    }
-
+    const mode = getModeData(modeName);
+    if (!mode || Array.isArray(mode) || !mode.lunches) return {};
     return mode.lunches;
   }
 
+  function modeHasLunchChoices(modeName) {
+    return Object.keys(getLunchesForMode(modeName)).length > 0;
+  }
 
   function getSelectedLunchData(modeName) {
-    const lunches =
-      getLunchesForMode(modeName);
-
-    return lunches[selectedLunch] || null;
+    return getLunchesForMode(modeName)[selectedLunch] || null;
   }
-
-
-  function modeHasLunchChoices(modeName) {
-    const lunches =
-      getLunchesForMode(modeName);
-
-    return (
-      Object.keys(lunches).length > 0
-    );
-  }
-
 
   function buildLunchBlock(modeName) {
-    const lunch =
-      getSelectedLunchData(modeName);
-
+    const lunch = getSelectedLunchData(modeName);
     if (!lunch) return null;
 
     const n = now();
-
-    const startParts =
-      parseHHMM(lunch.start);
-
-    const endParts =
-      parseHHMM(lunch.end);
+    const s = parseHHMM(lunch.start);
+    const e = parseHHMM(lunch.end);
 
     if (luxonOK) {
       return {
-        label:
-          `${selectedLunch} Lunch`,
-
-        sdt: n.set({
-          hour: startParts.h,
-          minute: startParts.m,
-          second: 0,
-          millisecond: 0
-        }),
-
-        edt: n.set({
-          hour: endParts.h,
-          minute: endParts.m,
-          second: 0,
-          millisecond: 0
-        })
+        label: `${selectedLunch} Lunch`,
+        sdt: n.set({ hour: s.h, minute: s.m, second: 0, millisecond: 0 }),
+        edt: n.set({ hour: e.h, minute: e.m, second: 0, millisecond: 0 })
       };
     }
 
     return {
-      label:
-        `${selectedLunch} Lunch`,
-
-      sdt: new Date(
-        n.getFullYear(),
-        n.getMonth(),
-        n.getDate(),
-        startParts.h,
-        startParts.m,
-        0,
-        0
-      ),
-
-      edt: new Date(
-        n.getFullYear(),
-        n.getMonth(),
-        n.getDate(),
-        endParts.h,
-        endParts.m,
-        0,
-        0
-      )
+      label: `${selectedLunch} Lunch`,
+      sdt: new Date(n.getFullYear(), n.getMonth(), n.getDate(), s.h, s.m, 0, 0),
+      edt: new Date(n.getFullYear(), n.getMonth(), n.getDate(), e.h, e.m, 0, 0)
     };
   }
-
 
   function getLunchStatus(n) {
-    const lunch =
-      buildLunchBlock(activeMode);
+    const lunch = buildLunchBlock(activeMode);
+    if (!lunch) return { state: 'none' };
 
-    if (!lunch) {
-      return {
-        state: 'none'
-      };
-    }
-
-    if (n < lunch.sdt) {
-      return {
-        state: 'upcoming',
-        ...lunch
-      };
-    }
-
-    if (
-      n >= lunch.sdt &&
-      n < lunch.edt
-    ) {
-      return {
-        state: 'active',
-        ...lunch
-      };
-    }
-
-    return {
-      state: 'finished',
-      ...lunch
-    };
+    if (n < lunch.sdt) return { state: 'upcoming', ...lunch };
+    if (n >= lunch.sdt && n < lunch.edt) return { state: 'active', ...lunch };
+    return { state: 'finished', ...lunch };
   }
 
+  function cycleLunch() {
+    const currentIndex = lunchOrder.indexOf(selectedLunch);
+    selectedLunch = lunchOrder[(currentIndex + 1) % lunchOrder.length];
+    saveLunch();
+    renderLunchTag();
+    showToast(`Lunch: ${selectedLunch}`);
+  }
+
+  // =========================================================
+  // TIMER PANEL
+  // =========================================================
+
+  function openTimerPanel() {
+    timerPanelOpen = true;
+    appEl?.classList.add('timer-open');
+    timerPanelEl?.classList.remove('hidden');
+    renderTimerPanel(now());
+  }
+
+  function closeTimerPanel() {
+    timerPanelOpen = false;
+    appEl?.classList.remove('timer-open');
+    timerPanelEl?.classList.add('hidden');
+    renderTimerTag(now());
+  }
+
+  function toggleTimerPanel() {
+    if (timerPanelOpen) closeTimerPanel();
+    else openTimerPanel();
+  }
+
+  function setCustomTimerMinutes(value) {
+    customTimerMinutes = Math.max(CUSTOM_TIMER_MIN, Math.min(CUSTOM_TIMER_MAX, value));
+    renderCustomTimerDisplay();
+  }
+
+  function renderCustomTimerDisplay() {
+    if (!customTimeDisplayEl) return;
+    customTimeDisplayEl.textContent = `${customTimerMinutes}:00`;
+  }
+
+  function startTimer(seconds) {
+    const n = now();
+    const blocks = buildBlocksFor(activeMode);
+    const stat = scheduleStatus(n, blocks);
+
+    timerEnd = addSeconds(n, seconds);
+    timerFlashUntil = null;
+    timerFlashToggle = false;
+    timerBellCutoff = stat.nextBell || null;
+
+    openTimerPanel();
+    ensureAudio();
+    audioCtx?.resume?.();
+    beep(660, 110);
+
+    showToast(`Timer started: ${mmss(seconds)}`);
+  }
+
+  function addOneMinuteToTimer() {
+    const n = now();
+
+    if (timerFlashUntil && n < timerFlashUntil) {
+      timerFlashUntil = null;
+      timerEnd = addSeconds(n, 60);
+    } else if (timerEnd) {
+      timerEnd = addSeconds(timerEnd, 60);
+    } else {
+      timerEnd = addSeconds(n, 60);
+    }
+
+    const stat = scheduleStatus(n, buildBlocksFor(activeMode));
+    timerBellCutoff = stat.nextBell || null;
+
+    openTimerPanel();
+    showToast('+1 minute');
+  }
+
+  function cancelTimer(showMessage = true) {
+    timerEnd = null;
+    timerBellCutoff = null;
+    timerFlashUntil = null;
+    timerFlashToggle = false;
+    timerPanelEl?.classList.remove('timerFlashA', 'timerFlashB');
+
+    if (showMessage) showToast('Timer canceled');
+    renderTimerPanel(now());
+    renderTimerTag(now());
+  }
+
+  function finishTimer(n) {
+    timerEnd = null;
+    timerBellCutoff = null;
+    timerFlashUntil = addMillis(n, TIMER_FLASH_MS);
+    timerFlashToggle = false;
+    lastTimerFlashSwapMs = 0;
+
+    openTimerPanel();
+    ensureAudio();
+    audioCtx?.resume?.();
+    beep(880, 300);
+  }
+
+  function renderTimerTag(n) {
+    if (!timerTagEl) return;
+
+    const isFlashing = timerFlashUntil && n < timerFlashUntil;
+
+    if (timerPanelOpen || (!timerEnd && !isFlashing)) {
+      timerTagEl.classList.add('hidden');
+      return;
+    }
+
+    timerTagEl.classList.remove('hidden');
+
+    if (isFlashing) {
+      timerTagEl.textContent = 'Timer 0:00';
+      return;
+    }
+
+    timerTagEl.textContent = `Timer ${mmss(secondsBetween(n, timerEnd))}`;
+  }
+
+  function renderTimerPanel(n) {
+    if (!timerPanelEl) return;
+
+    const isFlashing = timerFlashUntil && n < timerFlashUntil;
+    const isRunning = Boolean(timerEnd) || Boolean(isFlashing);
+
+    timerChooserEl?.classList.toggle('hidden', isRunning);
+    timerRunningStateEl?.classList.toggle('hidden', !isRunning);
+
+    if (!isRunning) {
+      timerPanelEl.classList.remove('timerFlashA', 'timerFlashB');
+      if (timerRunningLabelEl) timerRunningLabelEl.textContent = 'TIMER RUNNING';
+      return;
+    }
+
+    if (isFlashing) {
+      if (timerDisplayEl) timerDisplayEl.textContent = '0:00';
+      if (timerRunningLabelEl) timerRunningLabelEl.textContent = 'TIME';
+
+      const currentMs = Date.now();
+      if (currentMs - lastTimerFlashSwapMs >= TIMER_FLASH_SWAP_MS) {
+        timerFlashToggle = !timerFlashToggle;
+        lastTimerFlashSwapMs = currentMs;
+      }
+
+      timerPanelEl.classList.toggle('timerFlashA', timerFlashToggle);
+      timerPanelEl.classList.toggle('timerFlashB', !timerFlashToggle);
+      return;
+    }
+
+    timerPanelEl.classList.remove('timerFlashA', 'timerFlashB');
+
+    if (timerRunningLabelEl) timerRunningLabelEl.textContent = 'TIMER RUNNING';
+    if (timerDisplayEl) timerDisplayEl.textContent = mmss(secondsBetween(n, timerEnd));
+  }
+
+  // =========================================================
+  // MODE CONTROLS
+  // =========================================================
+
+  function setActiveMode(modeName) {
+    if (!schedules[modeName]) {
+      showToast(`Schedule not found: ${modeName}`);
+      return;
+    }
+
+    activeMode = modeName;
+    renderModeTag();
+    renderLunchTag();
+    updateTabTitleMinutes();
+    showToast(`Mode: ${modeName}`);
+  }
+
+  // =========================================================
+  // SIMULATION
+  // =========================================================
+
+  function returnToNow() {
+    simOffsetMs = 0;
+    renderSimTag();
+    updateTabTitleMinutes();
+    showToast(`Now: ${fmtClock(now())}`);
+  }
+
+  function jumpToNextBell() {
+    const n = now();
+    const stat = scheduleStatus(n, buildBlocksFor(activeMode));
+
+    if (!stat.nextBell) {
+      showToast('No next bell in this mode');
+      return;
+    }
+
+    const target = luxonOK
+      ? stat.nextBell.minus({ seconds: 5 })
+      : new Date(stat.nextBell.getTime() - 5000);
+
+    const actualNow = nowReal();
+
+    simOffsetMs = luxonOK
+      ? target.diff(actualNow, 'milliseconds').milliseconds
+      : target.getTime() - actualNow.getTime();
+
+    renderSimTag();
+    updateTabTitleMinutes();
+    showToast(`Next bell test: ${fmtClock(target)}`);
+  }
+
+  // =========================================================
+  // RENDER CLOCK / STATUS
+  // =========================================================
+
+  function renderClock(n) {
+    if (timeEl) timeEl.textContent = fmtClock(n);
+    if (dateEl) dateEl.textContent = fmtDate(n);
+  }
+
+  function renderModeTag() {
+    if (modeTagEl) modeTagEl.textContent = `Mode: ${activeMode}`;
+  }
 
   function renderLunchTag() {
     if (!lunchTagEl) return;
 
-    if (
-      !modeHasLunchChoices(
-        activeMode
-      )
-    ) {
-      lunchTagEl
-        .classList
-        .add('hidden');
-
+    if (!modeHasLunchChoices(activeMode)) {
+      lunchTagEl.classList.add('hidden');
       return;
     }
 
-    lunchTagEl
-      .classList
-      .remove('hidden');
-
-    lunchTagEl.textContent =
-      `Lunch: ${selectedLunch}`;
+    lunchTagEl.classList.remove('hidden');
+    lunchTagEl.textContent = `Lunch: ${selectedLunch}`;
   }
 
+  function renderSimTag() {
+    if (!simTagEl) return;
+    simTagEl.classList.toggle('hidden', simOffsetMs === 0);
+    simTagEl.textContent = simOffsetMs === 0 ? '' : 'SIM TIME';
+  }
+
+  function renderTenTenBadge(active) {
+    tenTenBadgeEl?.classList.toggle('hidden', !active);
+  }
 
   function renderLunchStatus(n, stat) {
     if (!lunchStatusEl) return;
 
-    const lunch =
-      getLunchStatus(n);
+    const lunch = getLunchStatus(n);
 
-    // No lunch configured.
-    if (lunch.state === 'none') {
-      hideLunchStatus();
+    if (lunch.state === 'none' || lunch.state === 'finished') {
+      lunchStatusEl.textContent = '';
+      lunchStatusEl.classList.add('hidden');
       return;
     }
 
-    // Lunch already ended.
-    if (lunch.state === 'finished') {
-      hideLunchStatus();
-      return;
-    }
-
-    // Always show if lunch is currently happening.
     if (lunch.state === 'active') {
-      const seconds =
-        secondsBetween(
-          n,
-          lunch.edt
-        );
-
-      lunchStatusEl.textContent =
-        `${lunch.label} • ends in ${mmss(seconds)}`;
-
-      lunchStatusEl
-        .classList
-        .remove('hidden');
-
+      lunchStatusEl.textContent = `${lunch.label} • ends in ${mmss(secondsBetween(n, lunch.edt))}`;
+      lunchStatusEl.classList.remove('hidden');
       return;
     }
 
-    /*
-      If lunch is still upcoming, show it only once
-      we're actually in 5th Period.
-
-      This prevents the clock from saying:
-      "D Lunch in 4 hours"
-      during 1st period.
-    */
     if (
       lunch.state === 'upcoming' &&
       stat &&
       stat.state === 'in_period' &&
       stat.current === '5th Period'
     ) {
-      const seconds =
-        secondsBetween(
-          n,
-          lunch.sdt
-        );
-
-      lunchStatusEl.textContent =
-        `${lunch.label} in ${mmss(seconds)}`;
-
-      lunchStatusEl
-        .classList
-        .remove('hidden');
-
+      lunchStatusEl.textContent = `${lunch.label} in ${mmss(secondsBetween(n, lunch.sdt))}`;
+      lunchStatusEl.classList.remove('hidden');
       return;
     }
 
-    hideLunchStatus();
-  }
-
-
-  function hideLunchStatus() {
-    if (!lunchStatusEl) return;
-
     lunchStatusEl.textContent = '';
-
-    lunchStatusEl
-      .classList
-      .add('hidden');
+    lunchStatusEl.classList.add('hidden');
   }
 
+  function renderCenter(stat, n) {
+    if (!stat || stat.state === 'noschedule') {
+      if (currEl) currEl.textContent = 'No school schedule active';
+      if (nextEl) nextEl.textContent = '';
+      renderTenTenBadge(false);
+      renderLunchStatus(n, stat);
+      return;
+    }
 
-  function cycleLunch() {
-    const currentIndex =
-      lunchOrder.indexOf(
-        selectedLunch
-      );
+    if (currEl) currEl.textContent = stat.current || '';
 
-    selectedLunch =
-      lunchOrder[
-        (currentIndex + 1) %
-        lunchOrder.length
-      ];
+    renderTenTenBadge(isTenTenActive(stat, n));
+    renderLunchStatus(n, stat);
 
-    saveLunch();
+    if (!nextEl || !stat.nextBell) {
+      if (nextEl) nextEl.textContent = '';
+      return;
+    }
 
-    renderLunchTag();
+    const seconds = secondsBetween(n, stat.nextBell);
 
-    showToast(
-      `Lunch: ${selectedLunch}`
-    );
+    if (stat.state === 'in_period' && seconds <= HIDE_NEXT_BELL_LAST_SECONDS) {
+      nextEl.textContent = '';
+      return;
+    }
+
+    nextEl.textContent = `Next bell: ${fmtHM(stat.nextBell)} • ${mmss(seconds)}`;
   }
 
+  function renderScheduleTable(blocks, n) {
+    if (!scheduleTableEl) return;
+
+    const periods = blocks.filter((block) => isClassPeriodLabel(block.label));
+    scheduleTableEl.innerHTML = '';
+    scheduleTableEl.style.setProperty('--schedule-count', String(Math.max(1, periods.length)));
+
+    periods.forEach((block) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      if (n >= block.sdt && n < block.edt) row.classList.add('active');
+
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = block.label.replace(' Period', '');
+
+      const time = document.createElement('div');
+      time.className = 'time';
+      time.textContent = `${fmtHM(block.sdt)}–${fmtHM(block.edt)}`;
+
+      row.appendChild(label);
+      row.appendChild(time);
+      scheduleTableEl.appendChild(row);
+    });
+  }
+
+  function setDim(n) {
+    if (!dimOverlay) return;
+    const { start, end } = todayRange();
+    const inSchoolHours = n >= start && n <= end;
+    dimOverlay.classList.toggle('hidden', inSchoolHours);
+  }
 
   // =========================================================
   // TAB TITLE
@@ -1012,342 +798,34 @@
 
   function updateTabTitleMinutes() {
     const n = now();
+    const stat = scheduleStatus(n, buildBlocksFor(activeMode));
 
-    const blocks =
-      buildBlocksFor(activeMode);
-
-    const stat =
-      scheduleStatus(
-        n,
-        blocks
-      );
-
-    if (
-      !stat ||
-      !stat.nextBell
-    ) {
-      document.title =
-        'School Bell Clock';
-
+    if (!stat || !stat.nextBell) {
+      document.title = 'School Bell Clock';
       return;
     }
 
-    const seconds =
-      secondsBetween(
-        n,
-        stat.nextBell
-      );
+    const minutes = Math.max(0, Math.ceil(secondsBetween(n, stat.nextBell) / 60));
 
-    const minutes =
-      minLeftCeil(seconds);
-
-    if (
-      stat.state ===
-      'in_period'
-    ) {
-      document.title =
-        `⏰ ${minutes} min left — ${stat.current}`;
-
-      return;
+    if (stat.state === 'in_period') {
+      document.title = `⏰ ${minutes} min left — ${stat.current}`;
+    } else if (stat.state === 'passing') {
+      document.title = `⏳ ${minutes} min to ${stat.nextPeriodLabel}`;
+    } else {
+      document.title = 'School Bell Clock';
     }
-
-    if (
-      stat.state ===
-      'passing'
-    ) {
-      document.title =
-        `⏳ ${minutes} min to ${stat.nextPeriodLabel}`;
-
-      return;
-    }
-
-    document.title =
-      'School Bell Clock';
   }
-
 
   function startTabTitleMinuteTicker() {
     updateTabTitleMinutes();
 
-    // Align updates with the next clock-minute boundary.
-    const msToNextMinute =
-      60000 -
-      (Date.now() % 60000);
+    const msToNextMinute = 60000 - (Date.now() % 60000);
 
     setTimeout(() => {
       updateTabTitleMinutes();
-
-      setInterval(
-        updateTabTitleMinutes,
-        60000
-      );
+      setInterval(updateTabTitleMinutes, 60000);
     }, msToNextMinute);
   }
-
-
-  // =========================================================
-  // MAIN RENDERING
-  // =========================================================
-
-  function renderClock(n) {
-    if (timeEl) {
-      timeEl.textContent =
-        fmtClock(n);
-    }
-
-    if (dateEl) {
-      dateEl.textContent =
-        fmtDate(n);
-    }
-  }
-
-
-  function renderModeTag() {
-    if (!modeTagEl) return;
-
-    modeTagEl.textContent =
-      `Mode: ${activeMode}`;
-  }
-
-
-  function renderScheduleTable(blocks, n) {
-    if (!tableEl) return;
-
-    tableEl.innerHTML = '';
-
-    // Bottom schedule strip only shows class periods.
-    const periodBlocks =
-      blocks.filter(
-        block =>
-          isClassPeriodLabel(
-            block.label
-          )
-      );
-
-    let activeIndex = -1;
-
-    periodBlocks.forEach(
-      (block, index) => {
-        if (
-          n >= block.sdt &&
-          n < block.edt
-        ) {
-          activeIndex =
-            index;
-        }
-      }
-    );
-
-    periodBlocks.forEach(
-      (block, index) => {
-        const cell =
-          document.createElement(
-            'div'
-          );
-
-        cell.className =
-          'row' +
-          (
-            index === activeIndex
-              ? ' active'
-              : ''
-          );
-
-        const label =
-          document.createElement(
-            'div'
-          );
-
-        label.className =
-          'label';
-
-        label.textContent =
-          block.label.replace(
-            ' Period',
-            ''
-          );
-
-        const time =
-          document.createElement(
-            'div'
-          );
-
-        time.className =
-          'time';
-
-        time.textContent =
-          `${fmtHM(block.sdt)}–${fmtHM(block.edt)}`;
-
-        cell.appendChild(label);
-        cell.appendChild(time);
-
-        tableEl.appendChild(cell);
-      }
-    );
-  }
-
-
-  function renderCenter(stat, n) {
-    if (
-      !stat ||
-      stat.state === 'noschedule'
-    ) {
-      if (currEl) {
-        currEl.textContent =
-          'No school schedule active';
-      }
-
-      if (nextEl) {
-        nextEl.textContent = '';
-      }
-
-      renderTenTenBadge(false);
-      hideLunchStatus();
-
-      return;
-    }
-
-    if (currEl) {
-      currEl.textContent =
-        stat.current || '';
-    }
-
-    // 10/10 is based ONLY on the class period.
-    const tenTenActive =
-      isTenTenActive(
-        stat,
-        n
-      );
-
-    renderTenTenBadge(
-      tenTenActive
-    );
-
-    // Lunch status is independent of 10/10.
-    renderLunchStatus(
-      n,
-      stat
-    );
-
-    if (!nextEl) return;
-
-    if (stat.nextBell) {
-      const seconds =
-        secondsBetween(
-          n,
-          stat.nextBell
-        );
-
-      const bellTime =
-        fmtHM(
-          stat.nextBell
-        );
-
-      // Hide visible countdown during final minute of class.
-      if (
-        stat.state === 'in_period' &&
-        seconds <=
-          HIDE_NEXT_BELL_LAST_SECONDS
-      ) {
-        nextEl.textContent = '';
-      } else {
-        nextEl.textContent =
-          `Next bell: ${bellTime} • ${mmss(seconds)}`;
-      }
-    } else {
-      nextEl.textContent = '';
-    }
-  }
-
-
-  function setDim(n) {
-    if (!dimOverlay) return;
-
-    const {
-      start,
-      end
-    } = todayRange();
-
-    const inHours =
-      n >= start &&
-      n <= end;
-
-    dimOverlay
-      .classList
-      .toggle(
-        'hidden',
-        inHours
-      );
-  }
-
-
-  // =========================================================
-  // TIMER OVERLAY
-  // =========================================================
-
-  function showCountdown(text) {
-    if (
-      !countdownOverlay ||
-      !countdownText
-    ) {
-      return;
-    }
-
-    countdownText.textContent =
-      text;
-
-    countdownOverlay
-      .classList
-      .remove('hidden');
-  }
-
-
-  function hideCountdown() {
-    countdownOverlay
-      ?.classList
-      .add('hidden');
-  }
-
-
-  function setFlashLayer(n) {
-    if (
-      !flashUntil ||
-      !(n < flashUntil)
-    ) {
-      flashOverlay
-        ?.classList
-        .add('hidden');
-
-      return;
-    }
-
-    flashOverlay
-      ?.classList
-      .remove('hidden');
-
-    const currentMs =
-      Date.now();
-
-    if (
-      currentMs -
-      lastFlashSwapMs >=
-      FLASH_SWAP_MS
-    ) {
-      flashToggle =
-        !flashToggle;
-
-      lastFlashSwapMs =
-        currentMs;
-    }
-
-    if (countdownText) {
-      countdownText.style.color =
-        flashToggle
-          ? UI.flashA
-          : UI.flashB;
-    }
-  }
-
 
   // =========================================================
   // WEATHER
@@ -1359,103 +837,45 @@
       1: 'Mainly clear',
       2: 'Partly cloudy',
       3: 'Cloudy',
-
       45: 'Fog',
       48: 'Fog',
-
       51: 'Drizzle',
       53: 'Drizzle',
       55: 'Drizzle',
-
       56: 'Freezing drizzle',
       57: 'Freezing drizzle',
-
       61: 'Rain',
       63: 'Rain',
       65: 'Heavy rain',
-
       66: 'Freezing rain',
       67: 'Freezing rain',
-
       71: 'Snow',
       73: 'Snow',
       75: 'Heavy snow',
       77: 'Snow grains',
-
       80: 'Showers',
       81: 'Showers',
       82: 'Heavy showers',
-
       85: 'Snow showers',
       86: 'Heavy snow showers',
-
       95: 'Thunder',
-
       96: 'Thunder + hail',
       99: 'Thunder + hail'
     };
 
-    return (
-      descriptions[code] ||
-      'Weather'
-    );
+    return descriptions[code] || 'Weather';
   }
-
 
   function codeToIconKind(code) {
-    if (code === 0) {
-      return 'clear';
-    }
-
-    if (
-      code === 1 ||
-      code === 2
-    ) {
-      return 'partly';
-    }
-
-    if (code === 3) {
-      return 'cloudy';
-    }
-
-    if (
-      code === 45 ||
-      code === 48
-    ) {
-      return 'fog';
-    }
-
-    if (
-      (
-        code >= 51 &&
-        code <= 67
-      ) ||
-      (
-        code >= 80 &&
-        code <= 82
-      )
-    ) {
-      return 'rain';
-    }
-
-    if (
-      (
-        code >= 71 &&
-        code <= 77
-      ) ||
-      code === 85 ||
-      code === 86
-    ) {
-      return 'snow';
-    }
-
-    if (code >= 95) {
-      return 'thunder';
-    }
-
+    if (code === 0) return 'clear';
+    if (code === 1 || code === 2) return 'partly';
+    if (code === 3) return 'cloudy';
+    if (code === 45 || code === 48) return 'fog';
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'thunder';
     return 'cloudy';
   }
-
 
   function svgIcon(kind) {
     switch (kind) {
@@ -1463,121 +883,65 @@
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="4"></circle>
-
-            <path d="M12 2v2"></path>
-            <path d="M12 20v2"></path>
-
-            <path d="M2 12h2"></path>
-            <path d="M20 12h2"></path>
-
-            <path d="M4.9 4.9l1.4 1.4"></path>
-            <path d="M17.7 17.7l1.4 1.4"></path>
-
-            <path d="M19.1 4.9l-1.4 1.4"></path>
-            <path d="M6.3 17.7l-1.4 1.4"></path>
-          </svg>
-        `;
+            <path d="M12 2v2"></path><path d="M12 20v2"></path>
+            <path d="M2 12h2"></path><path d="M20 12h2"></path>
+            <path d="M4.9 4.9l1.4 1.4"></path><path d="M17.7 17.7l1.4 1.4"></path>
+            <path d="M19.1 4.9l-1.4 1.4"></path><path d="M6.3 17.7l-1.4 1.4"></path>
+          </svg>`;
 
       case 'partly':
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="8" cy="10" r="3"></circle>
-
-            <path d="M8 3v1.5"></path>
-            <path d="M3 10h1.5"></path>
-            <path d="M12.5 10H14"></path>
-            <path d="M5.3 5.3l1.1 1.1"></path>
-
+            <path d="M8 3v1.5"></path><path d="M3 10h1.5"></path>
+            <path d="M12.5 10H14"></path><path d="M5.3 5.3l1.1 1.1"></path>
             <path d="M6 18h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.4 1.7A3.3 3.3 0 0 0 6 18z"></path>
-          </svg>
-        `;
-
-      case 'cloudy':
-        return `
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 18h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 18z"></path>
-          </svg>
-        `;
+          </svg>`;
 
       case 'rain':
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 16h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 16z"></path>
-
-            <path d="M8 18l-1 2"></path>
-            <path d="M12 18l-1 2"></path>
-            <path d="M16 18l-1 2"></path>
-          </svg>
-        `;
+            <path d="M8 18l-1 2"></path><path d="M12 18l-1 2"></path><path d="M16 18l-1 2"></path>
+          </svg>`;
 
       case 'snow':
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 16h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 16z"></path>
-
-            <circle cx="9" cy="19" r="0.8"></circle>
-            <circle cx="12" cy="19" r="0.8"></circle>
-            <circle cx="15" cy="19" r="0.8"></circle>
-          </svg>
-        `;
+            <circle cx="9" cy="19" r="0.8"></circle><circle cx="12" cy="19" r="0.8"></circle><circle cx="15" cy="19" r="0.8"></circle>
+          </svg>`;
 
       case 'thunder':
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 16h10a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 16z"></path>
-
             <path d="M12 16l-2 4h2l-1 3 4-6h-2l1-1z"></path>
-          </svg>
-        `;
+          </svg>`;
 
       case 'fog':
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 13h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 13z"></path>
-
-            <path d="M4 17h16"></path>
-            <path d="M6 20h12"></path>
-          </svg>
-        `;
+            <path d="M4 17h16"></path><path d="M6 20h12"></path>
+          </svg>`;
 
       default:
         return `
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 18h11a4 4 0 0 0 .3-8 5.8 5.8 0 0 0-11 .9A3.4 3.4 0 0 0 6 18z"></path>
-          </svg>
-        `;
+          </svg>`;
     }
   }
 
+  async function fetchWeather(force = false) {
+    if (!WEATHER.enabled || !weatherEl || !weatherTextEl || !weatherIconEl) return;
 
-  async function fetchWeather() {
-    if (
-      !WEATHER.enabled ||
-      !weatherEl ||
-      !weatherTextEl ||
-      !weatherIconEl
-    ) {
-      return;
-    }
+    const nowMs = Date.now();
+    const refreshMs = WEATHER.refreshMinutes * 60 * 1000;
 
-    const currentMs =
-      Date.now();
-
-    const minimumInterval =
-      WEATHER.refreshMinutes *
-      60 *
-      1000;
-
-    if (
-      currentMs -
-      lastWeatherFetchMs <
-      minimumInterval
-    ) {
-      return;
-    }
-
-    lastWeatherFetchMs =
-      currentMs;
+    if (!force && nowMs - lastWeatherFetchMs < refreshMs) return;
+    lastWeatherFetchMs = nowMs;
 
     const url =
       `https://api.open-meteo.com/v1/forecast` +
@@ -1589,667 +953,151 @@
       `&timezone=${encodeURIComponent(SCHOOL_TZ)}`;
 
     try {
-      const response =
-        await fetch(
-          url,
-          {
-            cache: 'no-store'
-          }
-        );
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Weather ${response.status}`);
 
-      if (!response.ok) {
-        throw new Error(
-          `Weather ${response.status}`
-        );
-      }
-
-      const data =
-        await response.json();
-
-      const temp =
-        data?.current
-          ?.temperature_2m;
-
-      const code =
-        data?.current
-          ?.weather_code;
-
-      const high =
-        data?.daily
-          ?.temperature_2m_max
-          ?.[0];
-
-      const low =
-        data?.daily
-          ?.temperature_2m_min
-          ?.[0];
-
-      const precip =
-        data?.daily
-          ?.precipitation_probability_max
-          ?.[0];
-
-      const snowCm =
-        data?.daily
-          ?.snowfall_sum
-          ?.[0];
-
-      const snowInches =
-        typeof snowCm === 'number'
-          ? snowCm / 2.54
-          : null;
-
-      const condition =
-        wmoToText(code);
-
-      const iconKind =
-        codeToIconKind(code);
+      const data = await response.json();
+      const temp = data?.current?.temperature_2m;
+      const code = data?.current?.weather_code;
+      const high = data?.daily?.temperature_2m_max?.[0];
+      const low = data?.daily?.temperature_2m_min?.[0];
+      const pop = data?.daily?.precipitation_probability_max?.[0];
+      const snowCm = data?.daily?.snowfall_sum?.[0];
+      const snowInches = typeof snowCm === 'number' ? snowCm / 2.54 : null;
 
       const parts = [];
+      const condition = wmoToText(code);
 
-      if (
-        typeof temp === 'number'
-      ) {
-        parts.push(
-          `${Math.round(temp)}°F ${condition}`
-        );
-      } else {
-        parts.push(condition);
+      if (typeof temp === 'number') parts.push(`${Math.round(temp)}°F ${condition}`);
+      else parts.push(condition);
+
+      if (typeof high === 'number' && typeof low === 'number') {
+        parts.push(`H ${Math.round(high)}° / L ${Math.round(low)}°`);
       }
 
-      if (
-        typeof high === 'number' &&
-        typeof low === 'number'
-      ) {
-        parts.push(
-          `H ${Math.round(high)}° / L ${Math.round(low)}°`
-        );
+      if (typeof pop === 'number') parts.push(`PoP ${Math.round(pop)}%`);
+      if (typeof snowInches === 'number' && snowInches > 0.05) {
+        parts.push(`Snow ${snowInches.toFixed(1)}"`);
       }
 
-      if (
-        typeof precip ===
-        'number'
-      ) {
-        parts.push(
-          `PoP ${Math.round(precip)}%`
-        );
-      }
+      lastWeatherText = parts.join(' • ');
+      lastWeatherCode = code;
 
-      if (
-        typeof snowInches ===
-          'number' &&
-        snowInches > 0.05
-      ) {
-        parts.push(
-          `Snow ${snowInches.toFixed(1)}"`
-        );
-      }
-
-      lastWeatherText =
-        parts.join(' • ');
-
-      lastWeatherCode =
-        code;
-
-      weatherIconEl.innerHTML =
-        svgIcon(iconKind);
-
-      weatherTextEl.textContent =
-        lastWeatherText;
-
+      weatherTextEl.textContent = lastWeatherText;
+      weatherIconEl.innerHTML = svgIcon(codeToIconKind(code));
     } catch (error) {
-      console.warn(
-        'Weather unavailable:',
-        error
-      );
-
-      if (
-        lastWeatherCode !== null
-      ) {
-        weatherIconEl.innerHTML =
-          svgIcon(
-            codeToIconKind(
-              lastWeatherCode
-            )
-          );
-      }
-
-      weatherTextEl.textContent =
-        lastWeatherText;
-    }
-  }
-
-
-  function renderWeather() {
-    if (
-      !WEATHER.enabled ||
-      !weatherEl ||
-      !weatherTextEl ||
-      !weatherIconEl
-    ) {
-      return;
-    }
-
-    weatherTextEl.textContent =
-      lastWeatherText;
-
-    if (
-      lastWeatherCode !== null
-    ) {
-      weatherIconEl.innerHTML =
-        svgIcon(
-          codeToIconKind(
-            lastWeatherCode
-          )
-        );
-    }
-  }
-
-
-  // =========================================================
-  // MODES
-  // =========================================================
-
-  function setActiveMode(
-    modeName,
-    toastMessage = null
-  ) {
-    if (!schedules[modeName]) {
-      return;
-    }
-
-    activeMode =
-      modeName;
-
-    renderModeTag();
-    renderLunchTag();
-
-    updateTabTitleMinutes();
-
-    if (toastMessage) {
-      showToast(
-        toastMessage
-      );
-    }
-  }
-
-
-  function toggleNineWeeks() {
-    if (
-      activeMode ===
-      nineWeeksPair[0]
-    ) {
-      setActiveMode(
-        nineWeeksPair[1],
-        nineWeeksPair[1]
-      );
-
-      return;
-    }
-
-    setActiveMode(
-      nineWeeksPair[0],
-      nineWeeksPair[0]
-    );
-  }
-
-
-  function cycleMode() {
-    if (!modesOrder.length) {
-      return;
-    }
-
-    const index =
-      modesOrder.indexOf(
-        activeMode
-      );
-
-    const nextIndex =
-      (
-        index + 1
-      ) %
-      modesOrder.length;
-
-    setActiveMode(
-      modesOrder[nextIndex],
-      `Mode: ${modesOrder[nextIndex]}`
-    );
-  }
-
-
-  // =========================================================
-  // TIMERS
-  // =========================================================
-
-  function startTimer(seconds) {
-    const n = now();
-
-    timerEnd =
-      addSeconds(
-        n,
-        seconds
-      );
-
-    flashUntil = null;
-
-    showToast(
-      `Timer: ${mmss(seconds)}`
-    );
-
-    ensureAudio();
-
-    audioCtx?.resume?.();
-
-    // Small acknowledgement chirp.
-    beep(
-      660,
-      120
-    );
-  }
-
-
-  function cancelTimer() {
-    timerEnd = null;
-    flashUntil = null;
-
-    hideCountdown();
-
-    showToast(
-      'Timer canceled'
-    );
-  }
-
-
-  // =========================================================
-  // KEYBOARD CONTROLS
-  // =========================================================
-
-  function keyHandler(event) {
-    if (
-      ['INPUT', 'TEXTAREA']
-        .includes(
-          document.activeElement
-            ?.tagName
-        )
-    ) {
-      return;
-    }
-
-    switch (event.key) {
-
-      // ---------------------------------
-      // FULLSCREEN
-      // ---------------------------------
-
-      case 'Escape':
-        document
-          .exitFullscreen
-          ?.();
-
-        break;
-
-
-      case 'f':
-      case 'F':
-        if (
-          !document.fullscreenElement
-        ) {
-          document.documentElement
-            .requestFullscreen
-            ?.();
-        } else {
-          document
-            .exitFullscreen
-            ?.();
-        }
-
-        break;
-
-
-      // ---------------------------------
-      // SCHEDULE MODES
-      // ---------------------------------
-
-      case 'r':
-      case 'R':
-        setActiveMode(
-          'Regular',
-          'Mode: Regular'
-        );
-
-        break;
-
-
-      case 'p':
-      case 'P':
-        setActiveMode(
-          'Pep Rally',
-          'Mode: Pep Rally'
-        );
-
-        break;
-
-
-      case 'e':
-      case 'E':
-        setActiveMode(
-          'Early Release',
-          'Mode: Early Release'
-        );
-
-        break;
-
-
-      case 't':
-      case 'T':
-        toggleNineWeeks();
-        break;
-
-
-      case 's':
-      case 'S':
-        cycleMode();
-        break;
-
-
-      // ---------------------------------
-      // LUNCH
-      // ---------------------------------
-
-      case 'l':
-      case 'L':
-        cycleLunch();
-        break;
-
-
-      // ---------------------------------
-      // TIMERS
-      // ---------------------------------
-
-      case '1':
-        startTimer(30);
-        break;
-
-
-      case '5':
-        startTimer(300);
-        break;
-
-
-      case '0':
-        startTimer(600);
-        break;
-
-
-      case 'Backspace':
-        event.preventDefault();
-        cancelTimer();
-        break;
-
-
-      // ---------------------------------
-      // AUDIO
-      // ---------------------------------
-
-      case 'm':
-      case 'M':
-        muted = !muted;
-
-        showToast(
-          muted
-            ? 'Muted'
-            : 'Unmuted'
-        );
-
-        break;
-
-
-      case '+':
-      case '=':
-        volume =
-          Math.min(
-            1,
-            volume + 0.1
-          );
-
-        if (gainNode) {
-          gainNode.gain.value =
-            volume;
-        }
-
-        showToast(
-          `Volume: ${Math.round(volume * 100)}%`
-        );
-
-        break;
-
-
-      case '-':
-        volume =
-          Math.max(
-            0,
-            volume - 0.1
-          );
-
-        if (gainNode) {
-          gainNode.gain.value =
-            volume;
-        }
-
-        showToast(
-          `Volume: ${Math.round(volume * 100)}%`
-        );
-
-        break;
-
-
-      // ---------------------------------
-      // SIMULATION
-      // ---------------------------------
-
-      case ']':
-        simOffsetMs +=
-          5 * 60 * 1000;
-
-        showToast(
-          `Sim +5m → ${fmtClock(now())}`
-        );
-
-        updateTabTitleMinutes();
-
-        break;
-
-
-      case '[':
-        simOffsetMs -=
-          5 * 60 * 1000;
-
-        showToast(
-          `Sim -5m → ${fmtClock(now())}`
-        );
-
-        updateTabTitleMinutes();
-
-        break;
-
-
-      case '\\':
-        simOffsetMs = 0;
-
-        showToast(
-          'Sim reset'
-        );
-
-        updateTabTitleMinutes();
-
-        break;
-
-
-      case 'n':
-      case 'N': {
-        const simulatedNow =
-          now();
-
-        const status =
-          scheduleStatus(
-            simulatedNow,
-            buildBlocksFor(
-              activeMode
-            )
-          );
-
-        if (
-          status.nextBell
-        ) {
-          const target =
-            luxonOK
-              ? status.nextBell.minus({
-                  seconds: 5
-                })
-              : new Date(
-                  status.nextBell
-                    .getTime() -
-                  5000
-                );
-
-          const actualNow =
-            nowReal();
-
-          simOffsetMs =
-            luxonOK
-              ? target.diff(
-                  actualNow,
-                  'milliseconds'
-                ).milliseconds
-              : target.getTime() -
-                actualNow.getTime();
-
-          showToast(
-            `Jump → ${fmtClock(target)}`
-          );
-
-          updateTabTitleMinutes();
-        } else {
-          showToast(
-            'No next bell in this mode'
-          );
-        }
-
-        break;
+      console.warn('Weather unavailable:', error);
+      weatherTextEl.textContent = lastWeatherText;
+
+      if (lastWeatherCode !== null) {
+        weatherIconEl.innerHTML = svgIcon(codeToIconKind(lastWeatherCode));
       }
     }
   }
-
 
   // =========================================================
   // FETCH SCHEDULES
   // =========================================================
 
   async function fetchSchedules() {
-    const separator =
-      SCHEDULES_URL.includes('?')
-        ? '&'
-        : '?';
+    const separator = SCHEDULES_URL.includes('?') ? '&' : '?';
+    const url = `${SCHEDULES_URL}${separator}cachebust=${Date.now()}`;
 
-    const url =
-      SCHEDULES_URL +
-      separator +
-      'cachebust=' +
-      Date.now();
-
-    let response;
-
-    try {
-      response =
-        await fetch(
-          url,
-          {
-            cache: 'no-store'
-          }
-        );
-    } catch (error) {
-      showToast(
-        `Fetch failed: ${error.message}`,
-        5000
-      );
-
-      throw error;
-    }
+    const response = await fetch(url, { cache: 'no-store' });
 
     if (!response.ok) {
-      const message =
-        `Fetch schedules failed: ${response.status} ${response.statusText}`;
-
-      showToast(
-        message,
-        5000
-      );
-
-      throw new Error(
-        message
-      );
+      throw new Error(`Fetch schedules failed: ${response.status} ${response.statusText}`);
     }
 
-    const text =
-      await response.text();
+    const text = await response.text();
+    const data = JSON.parse(text);
 
-    let data;
+    schedules = data.modes ? data.modes : data;
+    modesOrder = Object.keys(schedules);
 
-    try {
-      data =
-        JSON.parse(text);
-    } catch (error) {
-      showToast(
-        `Bad schedule JSON: ${error.message}`,
-        5000
-      );
-
-      throw error;
-    }
-
-    schedules =
-      data.modes
-        ? data.modes
-        : data;
-
-    modesOrder =
-      Object.keys(
-        schedules
-      );
-
-    if (!modesOrder.length) {
-      const message =
-        'No schedule modes found';
-
-      showToast(
-        message,
-        5000
-      );
-
-      throw new Error(
-        message
-      );
-    }
-
-    if (
-      !schedules[
-        activeMode
-      ]
-    ) {
-      activeMode =
-        modesOrder[0];
-    }
+    if (!modesOrder.length) throw new Error('No schedule modes found');
+    if (!schedules[activeMode]) activeMode = modesOrder[0];
 
     renderModeTag();
     renderLunchTag();
-
     updateTabTitleMinutes();
-
-    showToast(
-      'Schedules loaded'
-    );
+    showToast('Schedules loaded');
   }
 
+  // =========================================================
+  // KEYBOARD
+  // =========================================================
+
+  function keyHandler(event) {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+    switch (event.key) {
+      case 'r':
+      case 'R':
+        setActiveMode('Regular');
+        break;
+
+      case 'p':
+      case 'P':
+        setActiveMode('Pep Rally');
+        break;
+
+      case 'e':
+      case 'E':
+        setActiveMode('Early Release');
+        break;
+
+      case 'a':
+      case 'A':
+        setActiveMode(nineWeeksA);
+        break;
+
+      case 'b':
+      case 'B':
+        setActiveMode(nineWeeksB);
+        break;
+
+      case 'l':
+      case 'L':
+        cycleLunch();
+        break;
+
+      case 't':
+      case 'T':
+        toggleTimerPanel();
+        break;
+
+      case 'n':
+      case 'N':
+        returnToNow();
+        break;
+
+      case 'j':
+      case 'J':
+        jumpToNextBell();
+        break;
+
+      case 'm':
+      case 'M':
+        muted = !muted;
+        showToast(muted ? 'Muted' : 'Unmuted');
+        break;
+
+      case 'f':
+      case 'F':
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+        break;
+
+      case 'Escape':
+        if (timerPanelOpen) {
+          event.preventDefault();
+          closeTimerPanel();
+        }
+        break;
+    }
+  }
 
   // =========================================================
   // MAIN LOOP
@@ -2257,232 +1105,128 @@
 
   function loop() {
     const n = now();
+    const blocks = buildBlocksFor(activeMode);
+    const stat = scheduleStatus(n, blocks);
 
     renderClock(n);
+    renderCenter(stat, n);
+    renderScheduleTable(blocks, n);
+    renderSimTag();
     setDim(n);
 
-    const blocks =
-      buildBlocksFor(
-        activeMode
-      );
-
-    const stat =
-      scheduleStatus(
-        n,
-        blocks
-      );
-
-
-    // ---------------------------------
-    // TIMER
-    // ---------------------------------
-
-    if (
-      flashUntil &&
-      n < flashUntil
-    ) {
-      showCountdown(
-        '0:00'
-      );
-
-      setFlashLayer(n);
-
-    } else if (timerEnd) {
-      const seconds =
-        secondsBetween(
-          n,
-          timerEnd
-        );
-
-      if (seconds <= 0) {
-        beep();
-
-        flashUntil =
-          addMillis(
-            n,
-            FLASH_MS
-          );
-
-        timerEnd = null;
-
-        if (countdownText) {
-          countdownText.style.color =
-            UI.flashA;
-        }
-
-        showCountdown(
-          '0:00'
-        );
-
-      } else {
-        if (countdownText) {
-          countdownText.style.color =
-            UI.fg;
-        }
-
-        showCountdown(
-          mmss(seconds)
-        );
-      }
-
-    } else {
-      hideCountdown();
-
-      if (countdownText) {
-        countdownText.style.color =
-          UI.fg;
-      }
+    if (timerEnd && timerBellCutoff && n >= timerBellCutoff) {
+      cancelTimer(false);
+      closeTimerPanel();
+      showToast('Timer canceled at bell');
     }
 
-
-    // ---------------------------------
-    // NORMAL PAGE
-    // ---------------------------------
-
-    renderCenter(
-      stat,
-      n
-    );
-
-    renderScheduleTable(
-      blocks,
-      n
-    );
-
-    if (simTagEl) {
-      simTagEl.textContent =
-        simOffsetMs
-          ? 'SIM TIME'
-          : '';
+    if (timerEnd && secondsBetween(n, timerEnd) <= 0) {
+      finishTimer(n);
     }
 
-    renderWeather();
-    fetchWeather();
+    if (timerFlashUntil && n >= timerFlashUntil) {
+      timerFlashUntil = null;
+      timerPanelEl?.classList.remove('timerFlashA', 'timerFlashB');
+    }
 
-    requestAnimationFrame(
-      loop
-    );
+    if (timerPanelOpen) renderTimerPanel(n);
+    renderTimerTag(n);
+
+    requestAnimationFrame(loop);
   }
 
-
   // =========================================================
-  // BUTTONS / AUDIO UNLOCK
+  // EVENTS
   // =========================================================
 
-  reloadBtn
-    ?.addEventListener(
-      'click',
-      async () => {
-        try {
-          await fetchSchedules();
-        } catch (error) {
-          console.error(
-            error
-          );
-        }
-      }
-    );
-
-
-  fullscreenBtn
-    ?.addEventListener(
-      'click',
-      () => {
-        if (
-          !document.fullscreenElement
-        ) {
-          document.documentElement
-            .requestFullscreen
-            ?.();
-        }
-      }
-    );
-
-
-  window.addEventListener(
-    'keydown',
-    keyHandler
-  );
-
-
-  [
-    'click',
-    'keydown',
-    'pointerdown',
-    'touchstart'
-  ].forEach(eventName => {
-    window.addEventListener(
-      eventName,
-      () => {
-        if (!audioReady) {
-          try {
-            ensureAudio();
-
-            audioCtx
-              ?.resume
-              ?.();
-          } catch {
-            // Ignore audio unlock errors.
-          }
-        }
-      },
-      {
-        once: true
-      }
-    );
+  document.querySelectorAll('.timerPreset').forEach((button) => {
+    button.addEventListener('click', () => {
+      const seconds = Number(button.dataset.seconds);
+      if (Number.isFinite(seconds) && seconds > 0) startTimer(seconds);
+    });
   });
 
+  closeTimerBtn?.addEventListener('click', closeTimerPanel);
+  timerTagEl?.addEventListener('click', openTimerPanel);
 
-  audioGateBtn
-    ?.addEventListener(
-      'click',
-      () => {
-        ensureAudio();
+  customTimerBtn?.addEventListener('click', () => {
+    customTimerEditorEl?.classList.toggle('hidden');
+  });
 
-        audioCtx
-          ?.resume
-          ?.();
+  customMinusBtn?.addEventListener('click', () => {
+    setCustomTimerMinutes(customTimerMinutes - 1);
+  });
+
+  customPlusBtn?.addEventListener('click', () => {
+    setCustomTimerMinutes(customTimerMinutes + 1);
+  });
+
+  startCustomTimerBtn?.addEventListener('click', () => {
+    startTimer(customTimerMinutes * 60);
+  });
+
+  addMinuteBtn?.addEventListener('click', addOneMinuteToTimer);
+  cancelTimerBtn?.addEventListener('click', () => cancelTimer(true));
+
+  reloadBtn?.addEventListener('click', async () => {
+    try {
+      await fetchSchedules();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message, 5000);
+    }
+  });
+
+  fullscreenBtn?.addEventListener('click', () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  });
+
+  window.addEventListener('keydown', keyHandler);
+
+  ['click', 'keydown', 'pointerdown', 'touchstart'].forEach((eventName) => {
+    window.addEventListener(eventName, () => {
+      if (!audioReady) {
+        try {
+          ensureAudio();
+          audioCtx?.resume?.();
+        } catch {
+          // Ignore browser audio unlock failures.
+        }
       }
-    );
+    }, { once: true });
+  });
 
+  audioGateBtn?.addEventListener('click', () => {
+    ensureAudio();
+    audioCtx?.resume?.();
+  });
 
   // =========================================================
   // STARTUP
   // =========================================================
 
-  createTenTenBadgeIfNeeded();
-  createLunchTagIfNeeded();
-  createLunchStatusIfNeeded();
-
+  renderCustomTimerDisplay();
+  renderSimTag();
+  renderModeTag();
+  renderLunchTag();
 
   (async () => {
     try {
       await fetchSchedules();
     } catch (error) {
-      console.error(
-        error
-      );
+      console.error(error);
+      showToast(error.message, 5000);
     }
-
-    renderModeTag();
-    renderLunchTag();
 
     startTabTitleMinuteTicker();
 
-    if (
-      WEATHER.enabled &&
-      weatherEl
-    ) {
-      lastWeatherText =
-        'Weather: loading…';
-
-      renderWeather();
-      fetchWeather();
+    if (WEATHER.enabled) {
+      weatherTextEl.textContent = 'Weather: loading…';
+      fetchWeather(true);
+      setInterval(() => fetchWeather(false), WEATHER.refreshMinutes * 60 * 1000);
     }
 
-    requestAnimationFrame(
-      loop
-    );
+    requestAnimationFrame(loop);
   })();
-
 })();
